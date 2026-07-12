@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lexicon Arcanum — a word-bound roguelike</title>
+<link rel="stylesheet" href="css/tome.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
+</head>
+<body>
+<div id="desk"></div>
+
+<div id="stage">
+  <div id="tome">
+    <div id="tome-inner"></div>
+    <div id="book">
+      <div class="page left"><div class="page-content" id="page-left"></div></div>
+      <div id="spine"></div>
+      <div class="page right"><div class="page-content" id="page-right"></div></div>
+      <div id="flipper"><div class="ff"></div><div class="fb"></div></div>
+    </div>
+    <div id="bookmarks"></div>
+  </div>
+  <div id="hand-zone"></div>
+  <div id="battle-hud" class="hidden"></div>
+  <button id="end-turn" class="hidden arcane">End Turn ⌛</button>
+</div>
+
+<canvas id="fx-canvas"></canvas>
+<div id="toast"></div>
+
+<script src="js/data/words.js"></script>
+<script src="js/data/cards.js"></script>
+<script src="js/data/classes.js"></script>
+<script src="js/data/enemies.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/save.js"></script>
+<script src="js/particles.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
