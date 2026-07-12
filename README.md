@@ -24,9 +24,12 @@ Desktop and portrait/mobile layouts included.
   yellow = right rune, wrong place; grey = absent.
 - **Scry.** Once per turn, freely ask the tome whether a chosen letter is in the word.
 - **Casting.** Guess the word → its spell casts. **First-guess casts are ×1.5.**
-- **Engraving.** Correct words are learned *permanently*. If a learned word is served
-  again — in any future run — it **auto-casts instantly** and a fresh word is served.
-  Know *every* word of a length and new words come with one rune revealed.
+- **Engraving & resonance.** Correct words are learned *permanently* — across runs.
+  Learned words stay in the serving pool, and **every guess you make carries a 35%
+  chance that a known mystery word fires itself from its engraving** (then a fresh
+  word is served). Relics and a card push resonance well past 35%. Know *every* word
+  of a length and new words come with free revealed runes (base 1, up to 3 with
+  relics, always capped so deduction still matters).
 - **Schools & combos.** Every word belongs to a school (Astral ✦, Aegian ⛨, Ignium 🔥,
   Pestis ☠, Sanguine 🩸, Umbral 🌑, Mentis 🧠, Fulmen ⚡). Casting multiple words of a
   school in one battle triggers escalating combos.
@@ -70,11 +73,12 @@ encounters** (10 choice events — cursed lexicons, ink-imp wagers, bound djinn�
 world boss. The **Arcane Forge** is always reachable from the map: upgrade cards (×1.5
 effects) or unbind them.
 
-- **128 cards** across common (65%) / uncommon (25%) / rare (8%) / legendary (2%),
+- **129 cards** across common (65%) / uncommon (25%) / rare (8%) / legendary (2%),
   including energy-ramp cards (Leyline Binding, Grand Conduit, Aeon Engine) and 4–5⚡
   endgame bombs (The Omnilex, PENULTIMA). 17 cards are **unlockable** via achievements.
-- **24 relics** — passive run artifacts (Coal of the First Word: +1 max ⚡, Glass Eye,
-  Storm in a Jar…).
+- **28 relics** in two rarity tiers (rarer tier rolls 3× less often) — Coal of the
+  First Word (+1 max ⚡), Resonant Bell / Choir of Echoes (+10/20% resonance),
+  Lexicographer's Monocle / Index of All Things (+1/+2 mastered-length reveals)…
 - **Daily Challenge** — a date-seeded run (same class, seed and difficulty for
   everyone that day) with a shareable emoji result.
 
@@ -90,12 +94,12 @@ novice/adept/veteran cognition models for the word-guessing. Final targets
 
 | Scenario | Win rate |
 |---|---:|
-| Fresh grimoire, first runs (Novice) | ~35–43% for a *perfectly disciplined* sim player — meaningfully lower for humans |
-| 5–7L pools mastered (Novice) | ~40% |
-| Deep grimoire (140 words, Novice) | 72–85% |
-| Deep grimoire, Adept | ~63% |
-| Deep grimoire, Master | ~40% |
-| Complete 180-word grimoire, Archmage | ~35% (Archivist: ~60%) |
+| Fresh grimoire, first runs (Novice) | ~33–56% for a *perfectly disciplined* sim player — meaningfully lower for humans |
+| 5–7L pools mastered (Novice) | ~60% |
+| Deep grimoire (140 words, Novice) | 96–100% (mastery cruises the entry difficulty) |
+| Deep grimoire, Adept | ~87% |
+| Deep grimoire, Master | ~70% |
+| Complete 180-word grimoire, Archmage | ~62% (Archivist: ~77%) |
 
 ```bash
 node tools/validate.js     # word pool integrity

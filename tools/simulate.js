@@ -46,21 +46,21 @@ function makeGuess(b, skill, rng) {
   const pool = WordData.POOLS[len];
   const revealed = w.revealed.length;
   const gnum = w.guesses.length + 1;
-  const everyKnown = pool.every(x => b.meta.learnedWords.has(x));
 
-  if (everyKnown) {
-    let cands = pool.slice();
-    for (const g of w.guesses) cands = consistent(cands, g.word, g.marks);
-    cands = cands.filter(x => w.revealed.every(r => x[r.i] === r.c));
-    cands = cands.filter(x => !w.knownAbsent.some(ch => x.includes(ch)));
-    if (!cands.length) cands = [w.answer];
-    if (skill === 'novice' && rng() < 0.35) {
-      const misread = pool.filter(x => !w.guesses.some(g => g.word === x));
-      if (misread.length) return misread[Math.floor(rng() * misread.length)];
-    }
+  // Learned words can BE the answer now, so every player consults their
+  // grimoire: filter LEARNED words (the only ones a player can enumerate)
+  // against the feedback gathered so far. Unlearned answers eliminate the
+  // learned candidates quickly, dropping play into blind deduction below.
+  let cands = pool.filter(x => b.meta.learnedWords.has(x));
+  for (const g of w.guesses) cands = consistent(cands, g.word, g.marks);
+  cands = cands.filter(x => w.revealed.every(r => x[r.i] === r.c));
+  cands = cands.filter(x => !w.knownAbsent.some(ch => x.includes(ch)));
+  const trust = skill === 'novice' ? 0.5 : skill === 'adept' ? 0.8 : 0.9;
+  if (cands.length && rng() < trust) {
     return cands[Math.floor(rng() * cands.length)];
   }
 
+  // Otherwise deduce an unknown fantasy word the hard way.
   let info = 0;
   for (const g of w.guesses) info += g.marks.filter(m => m !== 'absent').length;
   info += Math.min(6, w.knownAbsent.length) * 0.3; // scry/prune knowledge helps a little
@@ -69,7 +69,7 @@ function makeGuess(b, skill, rng) {
   const p = Math.min(cap,
     (0.01 + 0.03 * (gnum - 1) + 0.12 * revealed + 0.015 * info) * mult);
   if (rng() < p) return w.answer;
-  const alt = pool.filter(x => x !== w.answer && !b.meta.learnedWords.has(x) && !w.guesses.some(g => g.word === x));
+  const alt = pool.filter(x => x !== w.answer && !w.guesses.some(g => g.word === x));
   return alt.length ? alt[Math.floor(rng() * alt.length)] : w.answer.split('').reverse().join('');
 }
 

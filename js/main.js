@@ -604,11 +604,13 @@
     flipTo(() => {
       renderBattle();
       processEvents(Engine.drainEvents(battle));
-      const fz = document.querySelector('.foe-row');
-      if (fz) {
+      // live-tracking ember zone: follows the foe row through re-renders/resizes
+      FX.setAmbient(() => {
+        const fz = document.querySelector('.foe-row');
+        if (!fz) return null;
         const r = fz.getBoundingClientRect();
-        FX.setAmbient({ x: r.left, y: r.top, w: r.width, h: r.height + 200 });
-      }
+        return { x: r.left, y: r.top, w: r.width, h: r.height + 160 };
+      });
     });
   }
 
@@ -639,6 +641,7 @@
     if (isPlayer && unit.echo) chips.push(`📢 echo +${unit.echo}%`);
     if (isPlayer && unit.twincast) chips.push(`👯 twincast`);
     if (isPlayer && unit.freeGuesses) chips.push(`🗣 free ×${unit.freeGuesses}`);
+    if (isPlayer && unit.resonance > 0.351) chips.push(`🔔 resonance ${Math.round(unit.resonance * 100)}%`);
     return chips.map(c => `<span class="status-chip">${c}</span>`).join('');
   }
 
@@ -722,9 +725,10 @@
     if (!w) { $R.appendChild(wrap); return; }
 
     const learnedCount = WordData.POOLS[w.len].filter(x => b.meta.learnedWords.has(x)).length;
+    const freeRunes = w.revealed.filter(r => r.free).length;
     wrap.appendChild(el('div', 'small center',
       `The mystery word — ${w.len} runes · grimoire knows ${learnedCount}/${WordData.POOLS[w.len].length}` +
-      (Engine.allLearned(b, w.len) ? ' · <b>one rune revealed freely</b>' : '')));
+      (freeRunes ? ` · <b>${freeRunes} rune${freeRunes > 1 ? 's' : ''} revealed freely</b>` : '')));
 
     if (w.vowelInfo) {
       const vh = el('div', 'vowel-hints');
@@ -1004,15 +1008,16 @@
     evts.forEach(ev => {
       switch (ev.type) {
         case 'wordServed':
-          later(() => log(`📖 A ${ev.len}-rune mystery word appears${ev.freeLetter ? ' — one rune shines freely' : ''}.`));
+          later(() => log(`📖 A ${ev.len}-rune mystery word appears${ev.freeLetters ? ` — ${ev.freeLetters === 1 ? 'one rune shines' : ev.freeLetters + ' runes shine'} freely (length mastered)` : ''}.`));
           break;
         case 'autocast':
           later(() => {
             const s = WordData.SPELLS[ev.word];
-            log(`⚡ <span class="bl-spell">${ev.word}</span> is engraved upon you — ${s.name} erupts unbidden!`);
-            toast(`⚡ <b>${ev.word}</b> — the engraved runes flare on their own!`);
+            log(`🔔 Your guess resonates — <span class="bl-spell">${ev.word}</span> was the word, and its engraving fires itself! (${s.name})`);
+            toast(`🔔 Resonance! <b>${ev.word}</b> casts itself from its engraving`);
             Sfx.autocast();
-            FX.runes(window.innerWidth / 2, window.innerHeight / 2 - 60, ev.word, { color: '#a887ff' });
+            const wp = centerOf(document.getElementById('guess-grid'));
+            FX.runes(wp.x, wp.y - 20, ev.word, { color: '#a887ff' });
           }, 320);
           break;
         case 'spellCast':
@@ -1021,7 +1026,8 @@
             const school = WordData.SCHOOLS[ev.school];
             log(`✨ <span class="bl-spell">${ev.word}</span> — ${ev.spell}${mult}${ev.casts > 1 ? ' (twice!)' : ''}${ev.firstGuess ? ' — first-guess brilliance!' : ''}${ev.combo ? ` · ${school.icon} combo` : ''}`);
             Sfx.spell(ev.school);
-            FX.runes(window.innerWidth / 2, window.innerHeight / 2 - 40, ev.word, { color: ev.power ? '#ffd700' : (ev.sig ? '#6ec1ff' : '#a887ff') });
+            const fp = foeCenter(battle ? battle.target : 0);
+            FX.runes(fp.x, fp.y - 30, ev.word, { color: ev.power ? '#ffd700' : (ev.sig ? '#6ec1ff' : '#a887ff') });
             if (ev.firstGuess) { Sfx.correct(); toast(`🌟 First guess! <b>${ev.word}</b> surges at ×${Math.round(ev.mult * 100) / 100}`); }
             if (ev.combo) toast(`${school.icon} <b>${school.name} combo!</b> ${school.combo.split(':')[0]} deepens`, 2200);
           }, 260);
@@ -1031,7 +1037,8 @@
             log(`⚡⚡ <span class="bl-spell">${ev.word}</span> is a <b>WORD OF POWER</b> — it casts at twice its strength!`);
             toast(`⚡ <b>${ev.word}</b> is a Word of Power! ×2 forevermore`, 4200);
             Sfx.power();
-            FX.powerNova(window.innerWidth / 2, window.innerHeight / 2 - 40);
+            const fp = foeCenter(battle ? battle.target : 0);
+            FX.powerNova(fp.x, fp.y);
           }, 500);
           break;
         case 'wordLearned':
@@ -1412,7 +1419,8 @@
     }
     m.p.appendChild(list);
     m.p.appendChild(el('p', 'small center',
-      'Engraved words auto-cast when served. Casting several words of one <b>school</b> in a battle triggers combos; ' +
+      '🔔 Each guess has a 35% chance (boostable) to make a <b>known</b> mystery word fire itself from its engraving. ' +
+      'Casting several words of one <b>school</b> in a battle triggers combos; ' +
       'weaving many <b>lengths</b> attunes you for insight and ⚡.' +
       (discovered.size ? ' · ⚡ marks Words of Power (×2)' : '')));
     const done = el('button', '', 'Close the grimoire');

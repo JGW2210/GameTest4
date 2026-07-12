@@ -49,7 +49,9 @@ html, body {
   transform-origin: center center;
 }
 
-#fx-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 90; }
+/* Particles render above the tome and hand but BELOW overlays/panels (70),
+ * floating combat text (95) and toasts (96), so effects never obscure choices. */
+#fx-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 65; }
 
 /* ============ THE TOME ============ */
 #tome {

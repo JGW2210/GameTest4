@@ -95,6 +95,7 @@
         hp: opts.hp, maxHp: opts.maxHp, block: 0, str: 0, wardBonus: 0, thorns: 0,
         weak: 0, vuln: 0, regen: 0,
         insight: opts.insight || 0,
+        resonance: 0.35 + RelicData.mod(relics, 'resonance') / 100,
         freeGuesses: RelicData.mod(relics, 'freeGuessPerBattle'),
         energy: 0, maxEnergy,
         scryLeft: 0,
@@ -142,35 +143,44 @@
   }
 
   function serveWord(b, len) {
+    // Serves a fresh mystery word — learned words included. Engraved words do
+    // not fire on serve; instead each GUESS carries a resonance chance
+    // (b.player.resonance) to auto-fire a known mystery word. Fully-mastered
+    // lengths reveal free letters so the word can be deduced from the grimoire.
     b.wordLen = len;
-    let guard = 0;
-    while (true) {
-      guard++;
-      const pool = WordData.POOLS[len];
-      const prev = b.word ? b.word.answer : null;
-      let answer = pick(b.rng, pool);
-      if (pool.length > 1 && answer === prev) answer = pick(b.rng, pool);
-      const everyKnown = allLearned(b, len);
-      if (b.meta.learnedWords.has(answer) && !everyKnown && guard < 40) {
-        emit(b, { type: 'autocast', word: answer });
-        b.stats.autoCasts++;
-        castSpell(b, answer, { auto: true });
-        if (b.over) { b.word = null; return; }
-        continue;
-      }
-      b.word = {
-        answer, len,
-        guesses: [], revealed: [], knownAbsent: [], vowelInfo: null,
-        served: true,
-      };
-      if (everyKnown) revealLetter(b, true);
-      // relic assistance on every fresh word
-      const prune = relicMod(b, 'pruneOnServe');
-      if (prune) pruneLetters(b, prune);
-      if (relicMod(b, 'vowelOnServe')) revealVowels(b);
-      emit(b, { type: 'wordServed', len, freeLetter: everyKnown });
-      return;
+    const pool = WordData.POOLS[len];
+    const prev = b.word ? b.word.answer : null;
+    let answer = pick(b.rng, pool);
+    if (pool.length > 1 && answer === prev) answer = pick(b.rng, pool);
+    const everyKnown = allLearned(b, len);
+    b.word = {
+      answer, len,
+      guesses: [], revealed: [], knownAbsent: [], vowelInfo: null,
+      served: true,
+    };
+    let freeLetters = 0;
+    if (everyKnown) {
+      freeLetters = Math.min(len - 2, 1 + relicMod(b, 'masteryReveal'));
+      for (let i = 0; i < freeLetters; i++) revealLetter(b, true);
     }
+    // relic assistance on every fresh word
+    const prune = relicMod(b, 'pruneOnServe');
+    if (prune) pruneLetters(b, prune);
+    if (relicMod(b, 'vowelOnServe')) revealVowels(b);
+    emit(b, { type: 'wordServed', len, freeLetters });
+  }
+
+  /* Engraving resonance: rolled once after each guess. If the (possibly just
+   * served) mystery word is engraved in the grimoire, it may fire itself. */
+  function rollResonance(b) {
+    if (b.over || !b.word) return;
+    if (!b.meta.learnedWords.has(b.word.answer)) return;
+    if (b.rng() >= b.player.resonance) return;
+    const w = b.word.answer;
+    emit(b, { type: 'autocast', word: w });
+    b.stats.autoCasts++;
+    castSpell(b, w, { auto: true });
+    if (!b.over) serveWord(b, b.wordLen);
   }
 
   function revealLetter(b, free) {
@@ -465,8 +475,10 @@
       if (b.player.refundOnCorrect) b.player.insight += 1;
       castSpell(b, g, { firstGuess });
       if (!b.over) serveWord(b, b.wordLen);
+      rollResonance(b);
       return { ok: true, correct: true, firstGuess, marks };
     }
+    rollResonance(b);
     return { ok: true, correct: false, marks };
   }
 
@@ -521,6 +533,7 @@
     if (fx.insight) { b.player.insight += fx.insight; emit(b, { type: 'insight', amount: fx.insight }); }
     if (fx.energyNow) { b.player.energy += fx.energyNow; emit(b, { type: 'energy', amount: fx.energyNow }); }
     if (fx.energyMax) { b.player.maxEnergy += fx.energyMax; b.player.energy += fx.energyMax; emit(b, { type: 'energyMax', amount: fx.energyMax }); }
+    if (fx.resonance) b.player.resonance += fx.resonance / 100;
     if (fx.freeGuess) b.player.freeGuesses += fx.freeGuess;
     if (fx.insightRune) b.player.insightRune += fx.insightRune;
     if (fx.reveal) for (let i = 0; i < fx.reveal; i++) revealLetter(b);

@@ -33,7 +33,7 @@
       icon: '⚔️',
       tagline: 'Brutal. No free insight, but far stronger base cards.',
       desc: 'Believes every argument can be won with sufficient force. Earns every guess.',
-      hp: 68, freeInsight: 0, draw: 3,
+      hp: 74, freeInsight: 0, draw: 3,
       deck: ['heavybolt', 'heavybolt', 'heavybolt', 'heavybolt', 'ironward', 'ironward', 'ironward', 'ironward', 'focus', 'focus'],
       unlock: null,
     },
@@ -53,10 +53,10 @@
   ];
 
   const DIFFICULTIES = [
-    { id: 0, name: 'Novice',   icon: '🕯️', hpMult: 1.2,  dmgMult: 1.15, goldMult: 1.0, desc: 'The tome opens gently.', unlock: null },
-    { id: 1, name: 'Adept',    icon: '📖', hpMult: 1.6,  dmgMult: 1.45, goldMult: 1.35, desc: 'Foes strike harder; aurum flows faster.', unlock: { winsOn: 0 } },
-    { id: 2, name: 'Master',   icon: '🔥', hpMult: 1.95, dmgMult: 1.7,  goldMult: 1.7, desc: 'The pages resist being turned.', unlock: { winsOn: 1 } },
-    { id: 3, name: 'Archmage', icon: '💀', hpMult: 2.45, dmgMult: 1.9,  goldMult: 2.2, desc: 'The tome reads YOU.', unlock: { winsOn: 2 } },
+    { id: 0, name: 'Novice',   icon: '🕯️', hpMult: 1.25, dmgMult: 1.2,  goldMult: 1.0, desc: 'The tome opens gently.', unlock: null },
+    { id: 1, name: 'Adept',    icon: '📖', hpMult: 1.75, dmgMult: 1.55, goldMult: 1.35, desc: 'Foes strike harder; aurum flows faster.', unlock: { winsOn: 0 } },
+    { id: 2, name: 'Master',   icon: '🔥', hpMult: 2.2,  dmgMult: 1.85, goldMult: 1.7, desc: 'The pages resist being turned.', unlock: { winsOn: 1 } },
+    { id: 3, name: 'Archmage', icon: '💀', hpMult: 3.0,  dmgMult: 2.15, goldMult: 2.2, desc: 'The tome reads YOU.', unlock: { winsOn: 2 } },
   ];
 
   /* Word-length unlock gates:

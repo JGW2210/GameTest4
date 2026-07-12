@@ -57,7 +57,22 @@
       desc: '+3 insight when a foe falls.', flavor: 'Every death is countable.' },
     { id: 'lens',       name: 'Scriptorium Lens',       icon: '🔍', mod: { vowelOnServe: true },
       desc: 'New mystery words show their vowels.', flavor: 'The vowels never learned to hide.' },
+    { id: 'resobell',   name: 'Resonant Bell',          icon: '🔔', mod: { resonance: 10 },
+      desc: '+10% engraving resonance (chance per guess that a known mystery word fires itself).',
+      flavor: 'Struck once, it never quite stops.' },
+    { id: 'choirecho',  name: 'Choir of Echoes',        icon: '📯', tier: 2, mod: { resonance: 20 },
+      desc: '+20% engraving resonance.', flavor: 'Your words, singing back at you in harmony.' },
+    { id: 'monocle',    name: 'Lexicographer’s Monocle', icon: '🧐', mod: { masteryReveal: 1 },
+      desc: '+1 rune revealed on mystery words of fully-mastered lengths.',
+      flavor: 'It has read everything. It is not impressed.' },
+    { id: 'indexomni',  name: 'Index of All Things',    icon: '🗂️', tier: 2, mod: { masteryReveal: 2 },
+      desc: '+2 runes revealed on mystery words of fully-mastered lengths.',
+      flavor: 'See also: everything. See also: EVERYTHING.' },
   ];
+
+  // Rarer relics (tier 2) roll three times less often than tier 1.
+  const TIER2 = new Set(['coal', 'inkwell', 'choirecho', 'indexomni', 'stormjar']);
+  RELICS.forEach(r => { r.tier = TIER2.has(r.id) ? 2 : 1; });
 
   const BY_ID = {};
   RELICS.forEach(r => BY_ID[r.id] = r);
@@ -66,7 +81,13 @@
     const pool = RELICS.filter(r => !ownedIds.includes(r.id));
     const out = [];
     while (out.length < (n || 1) && pool.length) {
-      out.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+      // tier-weighted sample without replacement (tier 1 = weight 3, tier 2 = 1)
+      const weights = pool.map(r => (r.tier === 2 ? 1 : 3));
+      const total = weights.reduce((a, z) => a + z, 0);
+      let x = rng() * total;
+      let idx = 0;
+      for (; idx < pool.length - 1; idx++) { x -= weights[idx]; if (x <= 0) break; }
+      out.push(pool.splice(idx, 1)[0]);
     }
     return out;
   }

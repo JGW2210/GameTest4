@@ -6,11 +6,20 @@
   const canvas = document.getElementById('fx-canvas');
   const ctx = canvas.getContext('2d');
   let W = 0, H = 0;
-  function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  function resize() {
+    // Render at device-pixel resolution so glyphs and rings stay crisp on HiDPI.
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
   window.addEventListener('resize', resize); resize();
 
   const parts = [];
-  let ambient = null; // {x,y,w,h} ember zone while in battle
+  let ambient = null; // {x,y,w,h} ember zone, or a function returning one (tracks layout)
 
   const TAU = Math.PI * 2;
   const rnd = (a, b) => a + Math.random() * (b - a);
@@ -97,9 +106,12 @@
     ctx.clearRect(0, 0, W, H);
     if (ambient && t - lastAmbient > 260 && parts.length < 500) {
       lastAmbient = t;
-      spawn({ kind: 'dot', x: rnd(ambient.x, ambient.x + ambient.w), y: ambient.y + ambient.h,
-        vx: rnd(-0.25, 0.25), vy: rnd(-0.9, -0.4), g: -0.002, life: 1, decay: rnd(0.004, 0.008),
-        size: rnd(1.2, 2.6), color: Math.random() < 0.6 ? '#ffb347' : '#a887ff', glow: true });
+      const zone = typeof ambient === 'function' ? ambient() : ambient;
+      if (zone) {
+        spawn({ kind: 'dot', x: rnd(zone.x, zone.x + zone.w), y: zone.y + zone.h,
+          vx: rnd(-0.25, 0.25), vy: rnd(-0.9, -0.4), g: -0.002, life: 1, decay: rnd(0.004, 0.008),
+          size: rnd(1.2, 2.6), color: Math.random() < 0.6 ? '#ffb347' : '#a887ff', glow: true });
+      }
     }
     for (let i = parts.length - 1; i >= 0; i--) {
       const p = parts[i];

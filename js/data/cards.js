@@ -116,6 +116,7 @@
     { id: 'palimpsest', cost: 1, name: 'Palimpsest',       rarity: U, fx: { draw: 3, exhaust: true },       flavor: 'Older words hide under new ones.' },
     { id: 'echoquill', cost: 1,  name: 'Echo Quill',       rarity: U, fx: { echo: 50, exhaust: true },      flavor: 'The next word will be spoken twice as loud.' },
     { id: 'freetongue', cost: 1, name: 'Free Tongue',      rarity: U, fx: { freeGuess: 1 },                 flavor: 'One guess, on the house.' },
+    { id: 'resochant',  cost: 1, name: 'Harmonic Chant',   rarity: U, fx: { resonance: 15, insight: 1 },    flavor: 'Sing to the engraved runes and they answer.' },
     { id: 'lastword', cost: 2,   name: 'Last Word',        rarity: U, fx: { dmg: 14, exhaust: true },       flavor: 'You always get it. Eventually.' },
     { id: 'guardtome', cost: 2,  name: 'Guardian Folio',   rarity: U, fx: { block: 10, thorns: 2 },         flavor: 'It reads its attackers. Then it bites.' },
     { id: 'scholarraid', cost: 1,name: 'Scholar’s Raid', rarity: U, fx: { dmg: 7, goldGain: 10 },      flavor: 'Loot the mind AND the pockets.',  unlock: { kind: 'wins', n: 1 } },
@@ -191,7 +192,7 @@
 
   /* Upgrade: numeric magnitudes ×1.5 (durations +1 where sensible) */
   const UPGRADE_SCALE = ['dmg', 'block', 'heal', 'insight', 'poison', 'burn', 'goldGain',
-    'dmgPerInsight', 'selfDmgReduce', 'regen', 'thorns', 'maxHp', 'str', 'wardBonus', 'echo'];
+    'dmgPerInsight', 'selfDmgReduce', 'regen', 'thorns', 'maxHp', 'str', 'wardBonus', 'echo', 'resonance'];
   const UPGRADE_BUMP = ['weak', 'vuln', 'draw', 'reveal', 'pruneLetters', 'freeGuess',
     'dmgPerLearned', 'blockPerLearned', 'insightRune', 'castDiscount', 'energyNow', 'dmgPerAttuned'];
 
@@ -226,6 +227,7 @@
     if (fx.pruneLetters) b.push(`Rule out ${fx.pruneLetters} absent letters`);
     if (fx.revealVowels) b.push('Reveal which vowels the word holds');
     if (fx.refundOnCorrect) b.push('Correct guesses refund 1 insight this battle');
+    if (fx.resonance) b.push(`Engraving resonance +${fx.resonance}% this battle`);
     if (fx.castTome) b.push(`Cast a learned spell${fx.castTome > 1 ? ` at ×${fx.castTome}` : ''} (costs word length − 4 insight)`);
     if (fx.castDiscount) b.push(`Tome casts cost ${fx.castDiscount} less`);
     if (fx.draw) b.push(`Draw ${fx.draw}`);
