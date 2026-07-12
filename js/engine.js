@@ -1,17 +1,20 @@
 /* ============================================================
- * LEXICON ARCANUM — Core engine (battle + run logic)
+ * LEXICON ARCANUM — Core engine v2 (battle + run logic)
  * Pure logic, no DOM. Runs in the browser and in Node, so the
- * balance simulator (tools/simulate.js) exercises the exact
- * rules the game ships with.
+ * balance simulator exercises the exact rules the game ships.
+ *
+ * v2 systems: energy (with in-battle max-⚡ ramping), multi-enemy
+ * encounters with targeting, scry, spell schools & combos,
+ * word-length attunement, relics, signature spells.
  * ============================================================ */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = factory(require('./data/words.js'), require('./data/cards.js'),
-      require('./data/classes.js'), require('./data/enemies.js'));
+      require('./data/classes.js'), require('./data/enemies.js'), require('./data/relics.js'));
   } else {
-    root.Engine = factory(root.WordData, root.CardData, root.ClassData, root.EnemyData);
+    root.Engine = factory(root.WordData, root.CardData, root.ClassData, root.EnemyData, root.RelicData);
   }
-})(typeof self !== 'undefined' ? self : this, function (WordData, CardData, ClassData, EnemyData) {
+})(typeof self !== 'undefined' ? self : this, function (WordData, CardData, ClassData, EnemyData, RelicData) {
 
   /* ---------- deterministic RNG (mulberry32) ---------- */
   function makeRng(seed) {
@@ -34,6 +37,7 @@
   }
 
   const HAND_CAP = 8;
+  const BASE_ENERGY = 3;
   const FIRST_GUESS_MULT = 1.5;
   const POWER_MULT = 2;
 
@@ -45,51 +49,92 @@
     const base = CardData.BY_ID[id];
     const fx = upgraded ? CardData.upgradedFx(base.fx) : Object.assign({}, base.fx);
     return { inst: instSeq++, id, name: base.name + (upgraded ? ' +' : ''), rarity: base.rarity,
-             fx, upgraded: !!upgraded, flavor: base.flavor, token: false };
+             cost: base.cost, fx, upgraded: !!upgraded, flavor: base.flavor, token: false };
   }
 
   /* ============================================================
    * BATTLE
    * ============================================================ */
+  function makeEnemy(id, world, stage, difficulty, scale) {
+    const e = EnemyData.ENEMIES[id];
+    const st = EnemyData.scaledStats(id, world, stage, difficulty);
+    const hp = Math.max(6, Math.round(st.hp * (scale || 1)));
+    return {
+      id: e.id, name: e.name, icon: e.icon, boss: !!e.boss, elite: !!e.elite,
+      hp, maxHp: hp, block: 0, str: 0, dmgMult: st.dmgMult * (scale ? Math.sqrt(scale) : 1),
+      weak: 0, vuln: 0, poison: 0, burn: 0, burnTurns: 0, stun: 0, blind: 0,
+      patternIdx: 0, pattern: e.pattern, _choiceIdx: null,
+    };
+  }
+
+  function relicMod(b, key) { return RelicData.mod(b.relics, key); }
+
   function createBattle(opts) {
-    // opts: { rng, cls, deck:[{id,upgraded}], hp, maxHp, enemyId, world, stage,
-    //         difficulty, meta:{learnedWords:Set, discoveredPower:Set}, wordLen, insight }
+    // opts: { rng, cls, deck:[{id,upgraded}], hp, maxHp, enemyIds:[{id,scale}]|enemyId,
+    //         world, stage, difficulty, meta:{learnedWords:Set, discoveredPower:Set},
+    //         wordLen, insight, relics:[ids] }
     const rng = opts.rng;
-    const e = EnemyData.ENEMIES[opts.enemyId];
-    const st = EnemyData.scaledStats(opts.enemyId, opts.world, opts.stage, opts.difficulty);
+    const relics = opts.relics || [];
+    let enemyDefs = opts.enemyIds;
+    if (!enemyDefs && opts.enemyId) enemyDefs = [{ id: opts.enemyId, scale: 1 }];
+    const enemies = enemyDefs.map(d => makeEnemy(d.id, opts.world, opts.stage, opts.difficulty, d.scale));
+
+    const hasBig = enemies.some(e => e.elite || e.boss);
+    const maxEnergy = BASE_ENERGY
+      + RelicData.mod(relics, 'maxEnergy')
+      + (hasBig ? RelicData.mod(relics, 'maxEnergyVsElite') : 0);
+
     const b = {
       rng,
       cls: opts.cls,
       difficulty: opts.difficulty,
       world: opts.world, stage: opts.stage,
       meta: opts.meta,
+      relics,
       player: {
         hp: opts.hp, maxHp: opts.maxHp, block: 0, str: 0, wardBonus: 0, thorns: 0,
         weak: 0, vuln: 0, regen: 0,
-        insight: opts.insight || 0, freeGuesses: 0,
-        echo: 0, twincast: 0, insightRune: 0,
-        refundOnCorrect: false, castDiscount: opts.cls.castDiscount || 0,
+        insight: opts.insight || 0,
+        freeGuesses: RelicData.mod(relics, 'freeGuessPerBattle'),
+        energy: 0, maxEnergy,
+        scryLeft: 0,
+        echo: RelicData.mod(relics, 'echoFirstSpell'),
+        twincast: 0, insightRune: 0,
+        refundOnCorrect: false,
+        castDiscount: (opts.cls.castDiscount || 0) + RelicData.mod(relics, 'tomeDiscount'),
       },
-      enemy: {
-        id: e.id, name: e.name, icon: e.icon, boss: !!e.boss, elite: !!e.elite,
-        hp: st.hp, maxHp: st.hp, block: 0, str: 0, dmgMult: st.dmgMult,
-        weak: 0, vuln: 0, poison: 0, burn: 0, burnTurns: 0, stun: 0,
-        patternIdx: 0, pattern: e.pattern,
-      },
+      enemies,
+      target: 0,
       drawPile: shuffle(rng, opts.deck.map(c => makeCard(c.id, c.upgraded))),
       hand: [], discard: [], exhausted: [],
       wordLen: opts.wordLen,
       word: null,
       turn: 0, over: false, won: false,
       goldGained: 0, maxHpGained: 0,
+      schoolCasts: {}, lengthsCast: [],
+      spellsThisBattle: 0,
       stats: { spellsCast: 0, firstGuessCasts: 0, autoCasts: 0, wordsLearned: [], powerDiscovered: [] },
       events: [],
     };
+    // battle-start relics
+    if (RelicData.mod(relics, 'strStart')) b.player.str += RelicData.mod(relics, 'strStart');
+    if (RelicData.mod(relics, 'thornsStart')) b.player.thorns += RelicData.mod(relics, 'thornsStart');
     return b;
   }
 
   function emit(b, ev) { b.events.push(ev); return ev; }
   function drainEvents(b) { const e = b.events; b.events = []; return e; }
+
+  const alive = (b) => b.enemies.filter(e => e.hp > 0);
+  function targetEnemy(b) {
+    if (b.enemies[b.target] && b.enemies[b.target].hp > 0) return b.enemies[b.target];
+    const a = alive(b);
+    if (a.length) { b.target = b.enemies.indexOf(a[0]); return a[0]; }
+    return b.enemies[0];
+  }
+  function setTarget(b, idx) {
+    if (b.enemies[idx] && b.enemies[idx].hp > 0) b.target = idx;
+  }
 
   /* ---------- word serving ---------- */
   function allLearned(b, len) {
@@ -97,9 +142,6 @@
   }
 
   function serveWord(b, len) {
-    // Serves a fresh mystery word. Auto-casts through learned words (runic
-    // engraving) until an unknown word lands — unless the whole pool is
-    // learned, in which case a free letter is revealed and guessing resumes.
     b.wordLen = len;
     let guard = 0;
     while (true) {
@@ -110,7 +152,6 @@
       if (pool.length > 1 && answer === prev) answer = pick(b.rng, pool);
       const everyKnown = allLearned(b, len);
       if (b.meta.learnedWords.has(answer) && !everyKnown && guard < 40) {
-        // Instant activation — the runes are engraved upon the caster.
         emit(b, { type: 'autocast', word: answer });
         b.stats.autoCasts++;
         castSpell(b, answer, { auto: true });
@@ -123,6 +164,10 @@
         served: true,
       };
       if (everyKnown) revealLetter(b, true);
+      // relic assistance on every fresh word
+      const prune = relicMod(b, 'pruneOnServe');
+      if (prune) pruneLetters(b, prune);
+      if (relicMod(b, 'vowelOnServe')) revealVowels(b);
       emit(b, { type: 'wordServed', len, freeLetter: everyKnown });
       return;
     }
@@ -165,22 +210,55 @@
     emit(b, { type: 'vowels', info });
   }
 
+  /* ---------- scry: free deduction, once per turn (+relics) ---------- */
+  function canScry(b) { return !b.over && b.word && b.player.scryLeft > 0; }
+  function scry(b, letter) {
+    if (!canScry(b)) return { ok: false };
+    letter = String(letter || '').toUpperCase();
+    if (!/^[A-Z]$/.test(letter)) return { ok: false };
+    const w = b.word;
+    b.player.scryLeft--;
+    const present = w.answer.includes(letter);
+    if (!present && !w.knownAbsent.includes(letter)) w.knownAbsent.push(letter);
+    if (present) {
+      w.vowelInfo = w.vowelInfo || {};
+      if (!w.vowelInfo[letter]) w.vowelInfo[letter] = 'present';
+    }
+    emit(b, { type: 'scry', letter, present });
+    return { ok: true, present };
+  }
+
   /* ---------- damage plumbing ---------- */
-  function playerDealDamage(b, base, hits, tag) {
+  function hitEnemy(b, enemy, base, tag) {
+    let d = Math.max(0, base);
+    if (b.player.weak > 0) d = Math.floor(d * 0.75);
+    if (enemy.vuln > 0) d = Math.floor(d * 1.5);
+    const absorbed = Math.min(enemy.block, d);
+    enemy.block -= absorbed;
+    const hpLoss = d - absorbed;
+    enemy.hp -= hpLoss;
+    emit(b, { type: 'enemyHit', amount: d, hpLoss, tag: tag || 'attack', idx: b.enemies.indexOf(enemy) });
+    if (enemy.hp <= 0) {
+      enemy.hp = 0;
+      emit(b, { type: 'enemyDown', idx: b.enemies.indexOf(enemy), name: enemy.name });
+      const bonus = relicMod(b, 'insightOnKill');
+      if (bonus && alive(b).length) { b.player.insight += bonus; emit(b, { type: 'insight', amount: bonus }); }
+    }
+    return d;
+  }
+
+  function playerDealDamage(b, base, hits, tag, opts) {
+    opts = opts || {};
     hits = hits || 1;
     let total = 0;
     for (let h = 0; h < hits; h++) {
-      if (b.enemy.hp <= 0) break;
-      let d = base + b.player.str;
-      if (b.player.weak > 0) d = Math.floor(d * 0.75);
-      if (b.enemy.vuln > 0) d = Math.floor(d * 1.5);
-      d = Math.max(0, d);
-      const absorbed = Math.min(b.enemy.block, d);
-      b.enemy.block -= absorbed;
-      const hpLoss = d - absorbed;
-      b.enemy.hp -= hpLoss;
-      total += d;
-      emit(b, { type: 'enemyHit', amount: d, hpLoss, tag: tag || 'attack' });
+      const targets = opts.aoe ? alive(b) : [targetEnemy(b)].filter(e => e && e.hp > 0);
+      if (!targets.length) break;
+      for (const e of targets) {
+        let dmg = base + b.player.str;
+        if (opts.execute && e.hp <= e.maxHp * 0.25) dmg += opts.execute;
+        total += hitEnemy(b, e, dmg, tag);
+      }
     }
     checkBattleEnd(b);
     return total;
@@ -211,26 +289,95 @@
 
   function checkBattleEnd(b) {
     if (b.over) return;
-    if (b.enemy.hp <= 0) { b.enemy.hp = 0; b.over = true; b.won = true; emit(b, { type: 'victory' }); }
-    else if (b.player.hp <= 0) { b.player.hp = 0; b.over = true; b.won = false; emit(b, { type: 'defeat' }); }
+    if (!alive(b).length) {
+      b.over = true; b.won = true;
+      // attunement spoils: bonus aurum per extra length attuned
+      const extra = Math.max(0, b.lengthsCast.length - 1);
+      if (extra) { b.goldGained += extra * 6; emit(b, { type: 'gold', amount: extra * 6, why: 'attunement' }); }
+      emit(b, { type: 'victory' });
+    } else if (b.player.hp <= 0) {
+      b.player.hp = 0; b.over = true; b.won = false; emit(b, { type: 'defeat' });
+    }
   }
 
-  /* ---------- spells ---------- */
+  /* ---------- schools, attunement, spells ---------- */
+  const ATTUNE_TIERS = {
+    2: { insight: 1 },
+    3: { energyMax: 1 },
+    4: { insight: 2, energyNow: 1 },
+    5: { str: 3 },
+    6: { energyMax: 1, insight: 3 },
+  };
+
+  function noteAttunement(b, len) {
+    if (b.lengthsCast.includes(len)) return;
+    b.lengthsCast.push(len);
+    const tier = b.lengthsCast.length;
+    const bonus = ATTUNE_TIERS[tier];
+    if (!bonus) return;
+    const chalice = relicMod(b, 'attuneBonus');
+    if (bonus.insight) b.player.insight += bonus.insight;
+    if (bonus.energyMax) b.player.maxEnergy += bonus.energyMax;
+    if (bonus.energyNow || chalice) b.player.energy += (bonus.energyNow || 0) + chalice;
+    if (bonus.str) b.player.str += bonus.str;
+    emit(b, { type: 'attune', tier, bonus, chalice });
+  }
+
+  function schoolComboApply(b, school, prior, fx, multRef) {
+    // Returns adjusted fx additions applied post-cast; multRef.mult may change.
+    switch (school) {
+      case 'astral': multRef.mult *= 1 + Math.min(0.75, 0.25 * prior); break;
+      case 'aegian': if (prior) { b.player.thorns += 2 * prior; healPlayer(b, 3 * prior); } break;
+      case 'ignium': if (prior && (fx.burn || fx.dmg)) fx._burnBonus = 3 * prior; break;
+      case 'pestis': if (prior && (fx.poison || fx.dmg)) fx._poisonBonus = 3 * prior; break;
+      case 'sanguine': if (prior) fx._healBonus = 4 * prior; break;
+      case 'umbral': if (prior) fx._durBonus = Math.min(2, prior); break;
+      case 'mentis': if (prior) { b.player.insight += prior; emit(b, { type: 'insight', amount: prior }); } break;
+      case 'fulmen': if (prior % 2 === 1) fx._stunBonus = 1; break;
+    }
+  }
+
   function applySpellFx(b, fx, mult) {
-    if (fx.dmg) playerDealDamage(b, Math.round(fx.dmg * mult), 1, 'spell');
+    const tgt = targetEnemy(b);
+    const aoe = !!fx.aoe;
+    const burnBonus = (fx._burnBonus || 0) + relicMod(b, 'burnBonus');
+    const poisonBonus = (fx._poisonBonus || 0) + relicMod(b, 'poisonBonus');
+    const durBonus = fx._durBonus || 0;
+
+    if (fx.dmg) playerDealDamage(b, Math.round(fx.dmg * mult) + relicMod(b, 'spellDmg'), fx.hits || 1, 'spell',
+      { aoe, execute: fx.execute || 0 });
     if (fx.block) gainBlock(b, Math.round(fx.block * mult));
-    if (fx.heal) healPlayer(b, Math.round(fx.heal * mult));
-    if (fx.burn) { b.enemy.burn += Math.round(fx.burn * mult); b.enemy.burnTurns = Math.max(b.enemy.burnTurns, 2); }
-    if (fx.poison) b.enemy.poison += Math.round(fx.poison * mult);
-    if (fx.weak) b.enemy.weak += fx.weak;
-    if (fx.vuln) b.enemy.vuln += fx.vuln;
+    if (fx.heal) healPlayer(b, Math.round(fx.heal * mult) + (fx._healBonus || 0));
+    else if (fx._healBonus) healPlayer(b, fx._healBonus);
+
+    const applyTo = aoe ? alive(b) : (tgt && tgt.hp > 0 ? [tgt] : []);
+    for (const e of applyTo) {
+      if (fx.burn || burnBonus && fx.dmg) {
+        const amt = Math.round((fx.burn || 0) * mult) + burnBonus;
+        if (amt > 0) { e.burn += amt; e.burnTurns = Math.max(e.burnTurns, 2); }
+      }
+      if (fx.poison || poisonBonus && fx.dmg) {
+        const amt = Math.round((fx.poison || 0) * mult) + poisonBonus;
+        if (amt > 0) e.poison += amt;
+      }
+      if (fx.weak) e.weak += fx.weak + durBonus;
+      if (fx.vuln) e.vuln += fx.vuln + durBonus;
+      if (fx.blind) e.blind += fx.blind + durBonus;
+      if (fx.stun || fx._stunBonus) e.stun += (fx.stun || 0) + (fx._stunBonus || 0);
+    }
     if (fx.str) b.player.str += Math.round(fx.str * mult);
     if (fx.insight) b.player.insight += Math.round(fx.insight * mult);
-    if (fx.stun) b.enemy.stun += fx.stun;
+    if (fx.energyNow) { b.player.energy += fx.energyNow; emit(b, { type: 'energy', amount: fx.energyNow }); }
+    if (fx.energyMax) { b.player.maxEnergy += fx.energyMax; b.player.energy += fx.energyMax; emit(b, { type: 'energyMax', amount: fx.energyMax }); }
+    if (fx.freeGuess) b.player.freeGuesses += fx.freeGuess;
+    if (fx.scryFree) b.player.scryLeft += fx.scryFree;
+    if (fx.reveal) for (let i = 0; i < fx.reveal; i++) revealLetter(b);
+    if (fx.draw) drawCards(b, fx.draw);
+    if (fx.thorns) b.player.thorns += fx.thorns;
+    if (fx.selfDmg) damagePlayer(b, fx.selfDmg, 'self');
   }
 
   function castSpell(b, word, opts) {
-    // opts: { firstGuess, auto, tomeMult }
     opts = opts || {};
     const spell = WordData.SPELLS[word];
     if (!spell) return null;
@@ -243,13 +390,38 @@
     const casts = b.player.twincast > 0 ? 2 : 1;
     if (b.player.twincast > 0) b.player.twincast--;
 
+    // school combo
+    const school = spell.school;
+    const prior = b.schoolCasts[school] || 0;
+    const fx = Object.assign({}, spell.fx);
+    const multRef = { mult };
+    schoolComboApply(b, school, prior, fx, multRef);
+    mult = multRef.mult;
+    b.schoolCasts[school] = prior + 1;
+
     emit(b, {
-      type: 'spellCast', word, spell: spell.name, arch: spell.arch, icon: spell.icon,
+      type: 'spellCast', word, spell: spell.name, arch: spell.arch, school, icon: spell.icon,
       mult, power: isPower, firstGuess: !!opts.firstGuess, auto: !!opts.auto, casts,
+      combo: prior > 0, sig: spell.sig,
     });
-    for (let c = 0; c < casts; c++) applySpellFx(b, spell.fx, mult);
+    for (let c = 0; c < casts; c++) { applySpellFx(b, fx, mult); if (b.over) break; }
     b.stats.spellsCast++;
-    if (opts.firstGuess) b.stats.firstGuessCasts++;
+    b.spellsThisBattle++;
+    noteAttunement(b, spell.len);
+
+    // relic pulses
+    const hc = relicMod(b, 'healOnCast');
+    if (hc && !b.over) healPlayer(b, hc);
+    const se = relicMod(b, 'stunEvery');
+    if (se && b.spellsThisBattle % se === 0 && !b.over) {
+      const t = targetEnemy(b);
+      if (t && t.hp > 0) { t.stun += 1; emit(b, { type: 'relicStun', idx: b.enemies.indexOf(t) }); }
+    }
+    if (opts.firstGuess) {
+      b.stats.firstGuessCasts++;
+      const fgi = relicMod(b, 'firstGuessInsight');
+      if (fgi) { b.player.insight += fgi; emit(b, { type: 'insight', amount: fgi }); }
+    }
     if (isPower && !b.meta.discoveredPower.has(word)) {
       b.meta.discoveredPower.add(word);
       b.stats.powerDiscovered.push(word);
@@ -274,7 +446,6 @@
 
     const marks = WordData.judgeGuess(g, w.answer);
     w.guesses.push({ word: g, marks });
-    // track keyboard knowledge
     for (let i = 0; i < g.length; i++) {
       if (marks[i] === 'absent' && !w.answer.includes(g[i]) && !w.knownAbsent.includes(g[i])) {
         w.knownAbsent.push(g[i]);
@@ -305,19 +476,24 @@
   }
 
   /* ---------- playing cards ---------- */
+  function canAfford(b, card) { return b.player.energy >= card.cost; }
+
   function playCard(b, inst, choice) {
     if (b.over) return { ok: false, reason: 'over' };
     const idx = b.hand.findIndex(c => c.inst === inst);
     if (idx < 0) return { ok: false, reason: 'not-in-hand' };
     const card = b.hand[idx];
     const fx = card.fx;
+    if (b.player.energy < card.cost) return { ok: false, reason: 'energy' };
 
-    // Cast Tome needs a valid chosen learned word & affordable cost.
+    if (choice && choice.targetIdx != null) setTarget(b, choice.targetIdx);
+
     if (fx.castTome) {
       const word = choice && choice.tomeWord;
       if (!word || !b.meta.learnedWords.has(word)) return { ok: false, reason: 'need-word' };
       const cost = Math.max(0, word.length - 4 - (fx.castDiscount || 0) - b.player.castDiscount);
       if (b.player.insight < cost) return { ok: false, reason: 'insight' };
+      b.player.energy -= card.cost;
       b.player.insight -= cost;
       emit(b, { type: 'cardPlayed', card: cardView(card) });
       castSpell(b, word, { tomeMult: fx.castTome * (b.cls.tomeMult || 1) });
@@ -325,15 +501,17 @@
       return { ok: true };
     }
 
+    b.player.energy -= card.cost;
     emit(b, { type: 'cardPlayed', card: cardView(card) });
 
-    if (fx.selfDmg) { b.player.hp -= fx.selfDmg; emit(b, { type: 'playerHit', amount: fx.selfDmg, hpLoss: fx.selfDmg, source: 'self' }); }
-    if (fx.dmg || fx.dmgPerLearned || fx.dmgPerInsight || fx.dmgFromBlock) {
+    if (fx.selfDmg) damagePlayer(b, fx.selfDmg, 'self');
+    if (fx.dmg || fx.dmgPerLearned || fx.dmgPerInsight || fx.dmgFromBlock || fx.dmgPerAttuned) {
       let base = fx.dmg || 0;
       if (fx.dmgPerLearned) base += fx.dmgPerLearned * b.meta.learnedWords.size;
       if (fx.dmgPerInsight) base += fx.dmgPerInsight * b.player.insight;
       if (fx.dmgFromBlock) base += b.player.block;
-      playerDealDamage(b, base, fx.hits || 1, 'card');
+      if (fx.dmgPerAttuned) base += fx.dmgPerAttuned * b.lengthsCast.length;
+      playerDealDamage(b, base, fx.hits || 1, 'card', { aoe: !!fx.aoe });
     }
     if (fx.block || fx.blockPerLearned) {
       let base = fx.block || 0;
@@ -341,6 +519,8 @@
       gainBlock(b, base);
     }
     if (fx.insight) { b.player.insight += fx.insight; emit(b, { type: 'insight', amount: fx.insight }); }
+    if (fx.energyNow) { b.player.energy += fx.energyNow; emit(b, { type: 'energy', amount: fx.energyNow }); }
+    if (fx.energyMax) { b.player.maxEnergy += fx.energyMax; b.player.energy += fx.energyMax; emit(b, { type: 'energyMax', amount: fx.energyMax }); }
     if (fx.freeGuess) b.player.freeGuesses += fx.freeGuess;
     if (fx.insightRune) b.player.insightRune += fx.insightRune;
     if (fx.reveal) for (let i = 0; i < fx.reveal; i++) revealLetter(b);
@@ -354,16 +534,24 @@
     if (fx.maxHp) { b.player.maxHp += fx.maxHp; b.player.hp += fx.maxHp; b.maxHpGained += fx.maxHp; }
     if (fx.str) b.player.str += fx.str;
     if (fx.wardBonus) b.player.wardBonus += fx.wardBonus;
-    if (fx.weak) b.enemy.weak += fx.weak;
-    if (fx.vuln) b.enemy.vuln += fx.vuln;
-    if (fx.poison) b.enemy.poison += fx.poison;
-    if (fx.burn) { b.enemy.burn += fx.burn; b.enemy.burnTurns = Math.max(b.enemy.burnTurns, 2); }
-    if (fx.stun) b.enemy.stun += fx.stun;
+    // enemy-status card effects hit the current target (or all if aoe)
+    const applyTo = fx.aoe ? alive(b) : [targetEnemy(b)].filter(e => e && e.hp > 0);
+    for (const e of applyTo) {
+      if (fx.weak) e.weak += fx.weak;
+      if (fx.vuln) e.vuln += fx.vuln;
+      if (fx.poison) e.poison += fx.poison + relicMod(b, 'poisonBonus');
+      if (fx.burn) { e.burn += fx.burn + relicMod(b, 'burnBonus'); e.burnTurns = Math.max(e.burnTurns, 2); }
+      if (fx.stun) e.stun += fx.stun;
+    }
     if (fx.cleanse) { b.player.weak = 0; b.player.vuln = 0; }
     if (fx.thorns) b.player.thorns += fx.thorns;
     if (fx.echo) b.player.echo += fx.echo;
     if (fx.twincast) b.player.twincast += 1;
     if (fx.goldGain) { b.goldGained += fx.goldGain; emit(b, { type: 'gold', amount: fx.goldGain }); }
+    if (fx.castRandom && b.meta.learnedWords.size) {
+      const words = Array.from(b.meta.learnedWords);
+      castSpell(b, pick(b.rng, words), {});
+    }
 
     checkBattleEnd(b);
     afterPlay(b, idx, card);
@@ -377,7 +565,7 @@
   }
 
   function cardView(c) {
-    return { inst: c.inst, id: c.id, name: c.name, rarity: c.rarity, fx: c.fx,
+    return { inst: c.inst, id: c.id, name: c.name, rarity: c.rarity, cost: c.cost, fx: c.fx,
              upgraded: c.upgraded, desc: CardData.describeFx(c.fx), flavor: c.flavor, token: c.token };
   }
 
@@ -400,11 +588,16 @@
     if (b.over) return;
     b.turn++;
     b.player.block = 0;
-    const gain = b.cls.freeInsight + b.player.insightRune;
+    b.player.energy = b.player.maxEnergy;
+    b.player.scryLeft = 1 + relicMod(b, 'scryPerTurn');
+    const gain = b.cls.freeInsight + b.player.insightRune + relicMod(b, 'insightPerTurn');
     if (gain) { b.player.insight += gain; emit(b, { type: 'insight', amount: gain, free: true }); }
+    const bpt = relicMod(b, 'blockPerTurn');
+    if (bpt) gainBlock(b, bpt);
     if (b.player.regen) healPlayer(b, b.player.regen);
-    drawCards(b, b.cls.draw);
-    // The Archivist always has a Cast Tome in hand each turn.
+    let drawN = b.cls.draw;
+    if (b.turn === 1) drawN += relicMod(b, 'drawFirstTurn');
+    drawCards(b, drawN);
     if (b.cls.alwaysDrawsCastTome && !b.hand.some(c => c.fx.castTome) && b.hand.length < HAND_CAP) {
       const t = makeCard('casttome', false);
       t.token = true; t.name = 'Conjured Tome';
@@ -412,13 +605,13 @@
       emit(b, { type: 'draw', card: cardView(t) });
     }
     if (!b.word) serveWord(b, b.wordLen);
+    if (b.turn === 1 && relicMod(b, 'revealOnStart')) revealLetter(b);
     emit(b, { type: 'turnStart', turn: b.turn });
   }
 
-  function enemyIntent(b) {
-    // Peek what the enemy will do (for UI). Choice-arrays resolve lazily but
-    // deterministically per pattern index using a stashed roll.
-    const e = b.enemy;
+  function enemyIntent(b, enemy) {
+    const e = enemy || targetEnemy(b);
+    if (!e) return { kind: 'attack', n: 0 };
     let move = e.pattern[e.patternIdx % e.pattern.length];
     if (Array.isArray(move)) {
       if (e._choiceIdx == null) e._choiceIdx = Math.floor(b.rng() * move.length);
@@ -427,9 +620,9 @@
     return move;
   }
 
-  function describeIntent(b) {
-    const m = enemyIntent(b);
-    const e = b.enemy;
+  function describeIntent(b, enemy) {
+    const e = enemy || targetEnemy(b);
+    const m = enemyIntent(b, e);
     const scale = (n) => {
       let d = Math.round(n * e.dmgMult) + e.str;
       if (e.weak > 0) d = Math.floor(d * 0.75);
@@ -448,47 +641,50 @@
     }
   }
 
-  function enemyAttack(b, n, hits) {
-    const e = b.enemy;
+  function enemyAttack(b, e, n, hits) {
     hits = hits || 1;
     for (let h = 0; h < hits; h++) {
       if (b.over) return;
+      if (e.blind > 0 && b.rng() < 0.5) {
+        emit(b, { type: 'enemyMiss', idx: b.enemies.indexOf(e) });
+        continue;
+      }
       let d = Math.round(n * e.dmgMult) + e.str;
       if (e.weak > 0) d = Math.floor(d * 0.75);
       if (b.player.vuln > 0) d = Math.floor(d * 1.5);
       damagePlayer(b, d, 'attack');
-      if (b.player.thorns > 0 && !b.over) {
-        e.block = Math.max(0, e.block - b.player.thorns);
-        // thorns pierce residual to hp
+      if (b.player.thorns > 0 && !b.over && e.hp > 0) {
         const t = b.player.thorns;
         const absorbed = Math.min(e.block, t);
+        e.block -= absorbed;
         e.hp -= (t - absorbed);
-        emit(b, { type: 'thorns', amount: t });
+        emit(b, { type: 'thorns', amount: t, idx: b.enemies.indexOf(e) });
+        if (e.hp <= 0) { e.hp = 0; emit(b, { type: 'enemyDown', idx: b.enemies.indexOf(e), name: e.name }); }
         checkBattleEnd(b);
       }
     }
   }
 
-  function endTurn(b) {
-    if (b.over) return;
-    emit(b, { type: 'turnEnd', turn: b.turn });
-    const e = b.enemy;
-
-    // damage-over-time ticks at the start of the enemy's move
-    if (e.poison > 0) { e.hp -= e.poison; emit(b, { type: 'dot', kind: 'poison', amount: e.poison }); e.poison--; checkBattleEnd(b); }
-    if (!b.over && e.burn > 0 && e.burnTurns > 0) { e.hp -= e.burn; emit(b, { type: 'dot', kind: 'burn', amount: e.burn }); e.burnTurns--; if (e.burnTurns === 0) e.burn = 0; checkBattleEnd(b); }
+  function enemyTurnOne(b, e) {
+    // dots tick at the start of each enemy's move
+    if (e.poison > 0) { e.hp -= e.poison; emit(b, { type: 'dot', kind: 'poison', amount: e.poison, idx: b.enemies.indexOf(e) }); e.poison--; }
+    if (e.hp > 0 && e.burn > 0 && e.burnTurns > 0) {
+      e.hp -= e.burn; emit(b, { type: 'dot', kind: 'burn', amount: e.burn, idx: b.enemies.indexOf(e) });
+      e.burnTurns--; if (e.burnTurns === 0) e.burn = 0;
+    }
+    if (e.hp <= 0) { e.hp = 0; emit(b, { type: 'enemyDown', idx: b.enemies.indexOf(e), name: e.name }); checkBattleEnd(b); return; }
     if (b.over) return;
 
     if (e.stun > 0) {
       e.stun--;
-      emit(b, { type: 'enemyStunned' });
+      emit(b, { type: 'enemyStunned', idx: b.enemies.indexOf(e) });
     } else {
-      const m = enemyIntent(b);
+      const m = enemyIntent(b, e);
       e._choiceIdx = null;
       e.block = 0;
-      emit(b, { type: 'enemyAct', move: m });
+      emit(b, { type: 'enemyAct', move: m, idx: b.enemies.indexOf(e) });
       switch (m.kind) {
-        case 'attack': enemyAttack(b, m.n, m.hits); break;
+        case 'attack': enemyAttack(b, e, m.n, m.hits); break;
         case 'block': e.block += Math.round(m.n * e.dmgMult); break;
         case 'buff': e.str += m.str; break;
         case 'debuff':
@@ -497,68 +693,89 @@
           break;
         case 'leech':
           b.player.insight = Math.max(0, b.player.insight - m.insight);
-          if (m.n) enemyAttack(b, m.n, 1);
+          if (m.n) enemyAttack(b, e, m.n, 1);
           emit(b, { type: 'leeched', amount: m.insight });
           break;
         case 'smolder':
-          if (m.n) enemyAttack(b, m.n, 1);
-          b.player.weak += 0; // burn foes brand the player: minor chip via attack only
+          if (m.n) enemyAttack(b, e, m.n, 1);
           break;
         case 'venom':
-          if (m.n) enemyAttack(b, m.n, 1);
+          if (m.n) enemyAttack(b, e, m.n, 1);
           break;
         case 'heal': e.hp = Math.min(e.maxHp, e.hp + Math.round(m.n * e.dmgMult)); break;
       }
       e.patternIdx++;
     }
-    if (b.over) return;
-
-    // durations tick down at end of round
+    // durations tick per enemy
     if (e.weak > 0) e.weak--;
     if (e.vuln > 0) e.vuln--;
+    if (e.blind > 0) e.blind--;
+  }
+
+  function endTurn(b) {
+    if (b.over) return;
+    emit(b, { type: 'turnEnd', turn: b.turn });
+    for (const e of b.enemies) {
+      if (b.over) break;
+      if (e.hp <= 0) continue;
+      enemyTurnOne(b, e);
+    }
+    if (b.over) return;
     if (b.player.weak > 0) b.player.weak--;
     if (b.player.vuln > 0) b.player.vuln--;
-
     startPlayerTurn(b);
   }
 
   /* ============================================================
-   * RUN LAYER — map generation, rewards, forge
+   * RUN LAYER — map generation, encounters, rewards, forge
    * ============================================================ */
-  const NODE_TYPES = { BATTLE: 'battle', ELITE: 'elite', TREASURE: 'treasure', SHRINE: 'shrine', BOSS: 'boss' };
+  const NODE_TYPES = { BATTLE: 'battle', ELITE: 'elite', TREASURE: 'treasure', SHRINE: 'shrine', EVENT: 'event', BOSS: 'boss' };
+
+  function encounterFor(rng, world, type, wdata) {
+    // Returns [{id, scale}] — multi-enemy packs appear from world 2 on.
+    if (type === NODE_TYPES.BOSS) return [{ id: wdata.boss, scale: 1 }];
+    if (type === NODE_TYPES.ELITE) return [{ id: pick(rng, wdata.elites), scale: 1 }];
+    const r = rng();
+    if (world >= 4 && r < 0.18) {
+      return [0, 1, 2].map(() => ({ id: pick(rng, wdata.normals), scale: 0.52 }));
+    }
+    if (world >= 2 && r < 0.42) {
+      return [0, 1].map(() => ({ id: pick(rng, wdata.normals), scale: 0.68 }));
+    }
+    return [{ id: pick(rng, wdata.normals), scale: 1 }];
+  }
 
   function generateWorldMap(rng, world) {
-    // 6 stages: 1..5 branching columns, 6 = boss. Returns {columns:[[node]], world}
     const columns = [];
     const wdata = EnemyData.BY_WORLD[world];
     for (let stage = 1; stage <= 6; stage++) {
       if (stage === 6) {
-        columns.push([{ stage, idx: 0, type: NODE_TYPES.BOSS, enemyId: wdata.boss, next: [] }]);
+        columns.push([{ stage, idx: 0, type: NODE_TYPES.BOSS, enemies: encounterFor(rng, world, NODE_TYPES.BOSS, wdata), next: [] }]);
         continue;
       }
-      const count = stage === 1 ? 2 : 2 + Math.floor(rng() * 2); // 2-3
+      const count = stage === 1 ? 2 : 2 + Math.floor(rng() * 2);
       const col = [];
       for (let i = 0; i < count; i++) {
         let type = NODE_TYPES.BATTLE;
         if (stage > 1) {
           const r = rng();
-          if (r < 0.18) type = NODE_TYPES.ELITE;
-          else if (r < 0.34) type = NODE_TYPES.TREASURE;
-          else if (r < 0.48) type = NODE_TYPES.SHRINE;
+          if (r < 0.16) type = NODE_TYPES.ELITE;
+          else if (r < 0.30) type = NODE_TYPES.TREASURE;
+          else if (r < 0.42) type = NODE_TYPES.SHRINE;
+          else if (r < 0.54) type = NODE_TYPES.EVENT;
         }
         const node = { stage, idx: i, type, next: [] };
-        if (type === NODE_TYPES.BATTLE) node.enemyId = pick(rng, wdata.normals);
-        if (type === NODE_TYPES.ELITE) node.enemyId = pick(rng, wdata.elites);
+        if (type === NODE_TYPES.BATTLE || type === NODE_TYPES.ELITE) {
+          node.enemies = encounterFor(rng, world, type, wdata);
+        }
         col.push(node);
       }
-      // Guarantee at least one battle per column so runs can't be all-skips
       if (!col.some(n => n.type === NODE_TYPES.BATTLE || n.type === NODE_TYPES.ELITE)) {
         const n = pick(rng, col);
-        n.type = NODE_TYPES.BATTLE; n.enemyId = pick(rng, wdata.normals);
+        n.type = NODE_TYPES.BATTLE; n.enemies = encounterFor(rng, world, NODE_TYPES.BATTLE, wdata);
       }
       columns.push(col);
     }
-    // connect columns
     for (let s = 0; s < 5; s++) {
       const cur = columns[s], nxt = columns[s + 1];
       const covered = new Set();
@@ -603,22 +820,24 @@
 
   /* Run-level rules shared by game and simulator */
   const RUN_RULES = {
-    postBattleHealMissingPct: 0.25, // heal 25% of missing HP after each victory
-    bossHealMissingPct: 1.0,        // full heal after felling a world boss
-    treasureGold: [22, 40],         // min..max before difficulty gold mult
+    postBattleHealMissingPct: 0.18,
+    bossHealMissingPct: 1.0,
+    treasureGold: [22, 40],
     treasureCardChance: 0.35,
-    shrineHealPct: 0.30,            // shrines can restore 30% max HP
+    shrineHealPct: 0.30,
     shrineGold: 25,
-    shrineWordChance: 1.0,          // runic vision always offered as an option
+    eliteRelicChance: 1.0,   // elites always drop a relic
+    bossRelicChoice: 0,      // bosses give gold/cards/full heal instead — relics come from elites & events
   };
 
   return {
     makeRng, pick, shuffle,
-    HAND_CAP, FIRST_GUESS_MULT, POWER_MULT,
+    HAND_CAP, BASE_ENERGY, FIRST_GUESS_MULT, POWER_MULT, ATTUNE_TIERS,
     makeCard, cardView, createBattle, startPlayerTurn, endTurn,
-    playCard, guess, canGuess, changeWordLength, serveWord,
+    playCard, canAfford, guess, canGuess, changeWordLength, serveWord,
+    scry, canScry, setTarget, targetEnemy, alive,
     enemyIntent, describeIntent, drainEvents, castSpell,
-    NODE_TYPES, generateWorldMap, rollCardRewards, FORGE, RUN_RULES,
+    NODE_TYPES, generateWorldMap, encounterFor, rollCardRewards, FORGE, RUN_RULES,
     allLearned,
   };
 });

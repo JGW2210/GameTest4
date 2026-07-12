@@ -4,7 +4,7 @@
  * ============================================================ */
 (function () {
   const META_KEY = 'lexicon-arcanum-meta-v1';
-  const RUN_KEY = 'lexicon-arcanum-run-v1';
+  const RUN_KEY = 'lexicon-arcanum-run-v2';
 
   function defaultMeta() {
     return {

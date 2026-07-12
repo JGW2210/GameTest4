@@ -138,32 +138,123 @@
 
   function describeEffect(fx) {
     const bits = [];
-    if (fx.dmg) bits.push(fx.dmg + ' damage');
+    if (fx.dmg) bits.push(fx.dmg + (fx.aoe ? ' damage to ALL' : ' damage') + (fx.hits ? '×' + fx.hits : ''));
+    if (fx.execute) bits.push('+' + fx.execute + ' vs foes below ¼ health');
     if (fx.block) bits.push(fx.block + ' ward');
     if (fx.heal) bits.push('heal ' + fx.heal);
-    if (fx.burn) bits.push(fx.burn + ' burn');
-    if (fx.poison) bits.push(fx.poison + ' venom');
+    if (fx.burn) bits.push(fx.burn + (fx.aoe ? ' burn to ALL' : ' burn'));
+    if (fx.poison) bits.push(fx.poison + (fx.aoe ? ' venom to ALL' : ' venom'));
     if (fx.weak) bits.push('weaken ' + fx.weak);
     if (fx.vuln) bits.push('expose ' + fx.vuln);
+    if (fx.blind) bits.push('blind ' + fx.blind);
     if (fx.str) bits.push('+' + fx.str + ' might');
+    if (fx.thorns) bits.push('+' + fx.thorns + ' thorns');
     if (fx.insight) bits.push('+' + fx.insight + ' insight');
+    if (fx.energyNow) bits.push('+' + fx.energyNow + ' ⚡ now');
+    if (fx.energyMax) bits.push('+' + fx.energyMax + ' max ⚡ this battle');
+    if (fx.freeGuess) bits.push('+' + fx.freeGuess + ' free guess');
+    if (fx.scryFree) bits.push('+' + fx.scryFree + ' scry');
+    if (fx.reveal) bits.push('reveal ' + fx.reveal + ' rune' + (fx.reveal > 1 ? 's' : ''));
+    if (fx.draw) bits.push('draw ' + fx.draw);
     if (fx.stun) bits.push('stun');
     return bits.join(', ');
   }
 
-  // Build the full spell table: SPELLS[word] = {word, len, arch, name, icon, fx, power}
+  /* ---- Spell schools (archetype → school) — casting multiple words of a
+   * school in one battle triggers escalating combos (engine-side). ---- */
+  const SCHOOL_OF_ARCH = {
+    strike: 'astral', devastate: 'astral', annihilate: 'astral',
+    aegis: 'aegian', bastion: 'aegian', sanctum: 'aegian',
+    ember: 'ignium', conflagrate: 'ignium', inferno: 'ignium',
+    venom: 'pestis', plague: 'pestis', pestilence: 'pestis',
+    drain: 'sanguine', siphon: 'sanguine', soulfeast: 'sanguine',
+    hex: 'umbral', curse: 'umbral', doom: 'umbral',
+    might: 'mentis', clarity: 'mentis', empower: 'mentis', ascend: 'mentis',
+    shock: 'fulmen', oblivion: 'fulmen',
+  };
+  const SCHOOLS = {
+    astral:   { name: 'Astral',   icon: '✦', combo: 'Momentum: each later Astral word this battle strikes +25% harder (max +100%)' },
+    aegian:   { name: 'Aegian',   icon: '⛨', combo: 'Harmony: each later Aegian word also grants 2 thorns and heals 3' },
+    ignium:   { name: 'Ignium',   icon: '🔥', combo: 'Kindling: each later Ignium word adds +3 burn' },
+    pestis:   { name: 'Pestis',   icon: '☠', combo: 'Bloom: each later Pestis word adds +3 venom' },
+    sanguine: { name: 'Sanguine', icon: '🩸', combo: 'Feast: each later Sanguine word heals +4 more' },
+    umbral:   { name: 'Umbral',   icon: '🌑', combo: 'Grip: each later Umbral word afflicts 1 turn longer' },
+    mentis:   { name: 'Mentis',   icon: '🧠', combo: 'Overmind: each later Mentis word grants +1 insight' },
+    fulmen:   { name: 'Fulmen',   icon: '⚡', combo: 'Static: every 2nd Fulmen word this battle also stuns' },
+  };
+
+  /* ---- Signature spells: hand-authored identities for notable words.
+   * Merged over the archetype effect (numbers replace, flags add). ---- */
+  const SIGNATURES = {
+    // 5L
+    IGNIS:  { fx: { burn: 4, aoe: true },                       note: 'its flame leaps to every foe' },
+    UMBRA:  { fx: { dmg: 4, blind: 1 },                          note: 'shadows swallow the foe’s aim' },
+    TERRA:  { fx: { block: 7, thorns: 2 },                       note: 'the earth answers violence in kind' },
+    LUMEN:  { fx: { reveal: 1 },                                 note: 'light spills across the mystery word' },
+    VIRGA:  { fx: { dmg: 3, hits: 3 },                           note: 'the rod strikes thrice' },
+    ANIMA:  { fx: { heal: 5, energyNow: 1 },                     note: 'the soul remembers its strength' },
+    FUROR:  { fx: { dmg: 5, energyNow: 1 },                      note: 'fury is its own fuel' },
+    GELUM:  { fx: { block: 5, weak: 1 },                         note: 'frost numbs the attacker' },
+    SPIRA:  { fx: { insight: 1, draw: 1 },                       note: 'the spiral turns inward' },
+    // 6L
+    VORTEX: { fx: { dmg: 7, aoe: true },                         note: 'nothing escapes the pull' },
+    RUNICA: { fx: { scryFree: 1, insight: 2 },                   note: 'runes read runes' },
+    MORTIS: { fx: { dmg: 8, execute: 10 },                       note: 'death favors the dying' },
+    SOLARA: { fx: { burn: 5, aoe: true },                        note: 'a small sun, briefly' },
+    LUNIRA: { fx: { heal: 6, insight: 2 },                       note: 'moonlight soothes and shows' },
+    VESPER: { fx: { dmg: 6, blind: 1 },                          note: 'dusk falls over their eyes' },
+    SIGNUM: { fx: { vuln: 2, reveal: 1 },                        note: 'the mark shows what is hidden' },
+    FERRUM: { fx: { block: 8, str: 1 },                          note: 'iron in the arm, iron in the will' },
+    // 7L
+    ARCANUM:{ fx: { insight: 3, scryFree: 1 },                   note: 'the secret behind all secrets' },
+    TONITRU:{ fx: { dmg: 10, stun: 0, aoe: true },               note: 'thunder speaks to the whole room' },
+    SANGUIS:{ fx: { dmg: 9, heal: 9 },                            note: 'blood calls to blood' },
+    SERPENS:{ fx: { poison: 9, blind: 1 },                        note: 'venom in the eye' },
+    DRACONI:{ fx: { dmg: 12, burn: 5 },                           note: 'dragonfire lingers' },
+    EXORIRI:{ fx: { heal: 8, energyMax: 1 },                      note: 'to rise is to grow' },
+    MALEDIC:{ fx: { weak: 2, vuln: 2, dmg: 5 },                   note: 'the curse completes itself' },
+    BENEDIC:{ fx: { heal: 7, block: 7, insight: 1 },              note: 'a blessing, thrice-folded' },
+    // 8L
+    SPECTRUM:{ fx: { dmg: 6, aoe: true, insight: 2 },             note: 'every color of ruin at once' },
+    DRACONIS:{ fx: { dmg: 18, burn: 8 },                          note: 'the elder wyrm answers' },
+    TONITRUS:{ fx: { dmg: 15, aoe: true },                        note: 'the storm made plural' },
+    EXORITUR:{ fx: { heal: 12, energyMax: 1, insight: 2 },        note: 'what rises, rises higher' },
+    SANGUINE:{ fx: { dmg: 13, heal: 13 },                         note: 'the red tithe, doubled' },
+    // 9L
+    TEMPESTAS:{ fx: { dmg: 20, aoe: true },                       note: 'the tempest spares no one' },
+    MYSTERIUM:{ fx: { freeGuess: 2, insight: 3 },                 note: 'mystery rewards the curious' },
+    VINDICTUS:{ fx: { dmg: 14, execute: 20 },                     note: 'vengeance finishes what it starts' },
+    ANIMAVORA:{ fx: { dmg: 16, heal: 16, aoe: true },             note: 'it feeds on every soul present' },
+    INCENDIUM:{ fx: { burn: 14, aoe: true },                      note: 'the library fire, remembered' },
+    LUMINARIS:{ fx: { reveal: 2, insight: 3, heal: 6 },           note: 'all is illuminated' },
+    CRUORIFEX:{ fx: { dmg: 24, selfDmg: 5 },                      note: 'paid for in your own blood' },
+    // 10L
+    APOCALYPSA:{ fx: { dmg: 40, aoe: true },                      note: 'the last page of every story' },
+    OMNIPOTENS:{ fx: { dmg: 30, energyMax: 1, energyNow: 2 },     note: 'for a moment, boundless' },
+    LUNAETERNA:{ fx: { heal: 20, block: 25, insight: 4 },         note: 'the moon that never sets' },
+    TERRAMOTUS:{ fx: { dmg: 25, aoe: true, stun: 1 },             note: 'the world shrugs' },
+    STELLIFERA:{ fx: { dmg: 12, hits: 3, aoe: false, insight: 3 },note: 'she carries the stars' },
+    MYSTAGOGUS:{ fx: { freeGuess: 3, scryFree: 2, insight: 3 },   note: 'the initiator of initiates' },
+  };
+
+  // Build the full spell table: SPELLS[word] = {word, len, arch, school, name, icon, fx, power, sig}
   const SPELLS = {};
   for (const lenKey of Object.keys(POOLS)) {
     const len = Number(lenKey);
     POOLS[len].forEach((word, i) => {
       const arch = archetypeFor(len, i);
-      const fx = effectFor(len, i);
+      let fx = effectFor(len, i);
+      const sig = SIGNATURES[word];
+      if (sig) fx = Object.assign({}, fx, sig.fx);
       SPELLS[word] = {
         word, len, arch,
-        name: ARCHETYPES[arch].name + (len === 8 ? ' Empowered' : ''),
+        school: SCHOOL_OF_ARCH[arch],
+        name: (sig ? '★ ' : '') + ARCHETYPES[arch].name + (len === 8 && !sig ? ' Empowered' : ''),
         icon: ARCHETYPES[arch].icon,
         fx,
         power: WORDS_OF_POWER[len] === word,
+        sig: !!sig,
+        note: sig ? sig.note : null,
         desc: describeEffect(fx),
       };
     });
@@ -187,5 +278,5 @@
     return res;
   }
 
-  return { POOLS, SPELLS, WORDS_OF_POWER, ARCHETYPES, judgeGuess, describeEffect };
+  return { POOLS, SPELLS, WORDS_OF_POWER, ARCHETYPES, SCHOOLS, SCHOOL_OF_ARCH, SIGNATURES, judgeGuess, describeEffect };
 });

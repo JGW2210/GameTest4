@@ -22,10 +22,10 @@
 
   /* ---- Scaling knobs (tuned by simulation) ---- */
   const SCALING = {
-    WORLD_HP:  [1.0, 1.70, 2.45, 3.25, 4.20],
-    WORLD_DMG: [1.0, 1.45, 1.85, 2.20, 2.65],
-    STAGE_HP_PER: 0.07,   // +7% hp per stage within a world
-    STAGE_DMG_PER: 0.05,  // +5% dmg per stage within a world
+    WORLD_HP:  [1.30, 2.20, 3.20, 4.30, 5.60],
+    WORLD_DMG: [1.15, 1.70, 2.20, 2.70, 3.30],
+    STAGE_HP_PER: 0.09,   // +9% hp per stage within a world
+    STAGE_DMG_PER: 0.06,  // +6% dmg per stage within a world
     ELITE_HP: 1.55, ELITE_DMG: 1.25,
     GOLD_BASE: 16, GOLD_PER_WORLD: 7, GOLD_ELITE: 1.8, GOLD_BOSS: 3.0,
   };
