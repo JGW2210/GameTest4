@@ -320,6 +320,21 @@ button.small-btn { padding: 4px 10px; font-size: 12.5px; }
   background: linear-gradient(120deg, transparent 30%, rgba(255,230,150,0.45) 50%, transparent 70%);
   background-size: 220% 100%; animation: shimmer 2.6s infinite; pointer-events: none; }
 @keyframes shimmer { 0% { background-position: 130% 0; } 100% { background-position: -130% 0; } }
+/* Aetheria — the red ultimate rarity (World 3+, Adept+ only) */
+.card.rar-aetheria { border-color: #c1121f;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255,210,200,0.4), transparent 60%),
+    linear-gradient(170deg, #f6e4dc, #e5c2ae);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.55), 0 0 20px rgba(193,18,31,0.7);
+  animation: aetherpulse 2.2s infinite; }
+.card.rar-aetheria::before { content: ''; position: absolute; inset: -2px; border-radius: 10px;
+  background: linear-gradient(120deg, transparent 30%, rgba(255,90,80,0.4) 50%, transparent 70%);
+  background-size: 220% 100%; animation: shimmer 1.8s infinite; pointer-events: none; }
+.card.rar-aetheria .cname { color: #8c1218; }
+.card.rar-aetheria .crar { color: #c1121f; }
+@keyframes aetherpulse {
+  0%, 100% { box-shadow: 0 6px 14px rgba(0,0,0,0.55), 0 0 14px rgba(193,18,31,0.55); }
+  50% { box-shadow: 0 6px 14px rgba(0,0,0,0.55), 0 0 26px rgba(193,18,31,0.9); } }
 .card.upgraded .cname { color: var(--arcane); }
 .card.playing { animation: playcard 0.45s forwards; }
 @keyframes playcard { to { transform: translateY(-220px) scale(0.5) rotate(8deg); opacity: 0; } }

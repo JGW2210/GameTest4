@@ -511,6 +511,10 @@
     return { ov, p, close: () => { ov.remove(); modalOpen = false; } };
   }
 
+  function aethOpts() {
+    return { aetheria: Engine.aetheriaEligible(run.world, ClassData.DIFFICULTIES[run.difficulty]) };
+  }
+
   function treasureModal() {
     const rng = runRng();
     const RR = Engine.RUN_RULES;
@@ -522,7 +526,7 @@
     const m = overlayPanel(`<div class="rune-title">🎁 A Gilded Cache</div>
       <p class="center">Tucked between the pages: <b>${gold} aurum</b>.</p>`);
     if (withCard) {
-      const offers = Engine.rollCardRewards(rng, metaForEngine(), 0.2);
+      const offers = Engine.rollCardRewards(rng, metaForEngine(), 0.2, aethOpts());
       m.p.appendChild(el('p', 'center small', 'Something else glints beneath the coins…'));
       m.p.appendChild(cardChoiceRow(offers, m, () => { SaveSystem.saveRun(run); renderMap(); }));
     }
@@ -629,7 +633,7 @@
     if (fx.dupeCard) { pickCardModal('Duplicate which card?', (c) => { run.deck.push(Object.assign({}, c)); after(); }); return; }
     if (fx.removeFree) { pickCardModal('Unbind which card?', (c, i) => { run.deck.splice(i, 1); after(); }); return; }
     if (fx.cardOffer != null) {
-      const offers = Engine.rollCardRewards(rng, metaForEngine(), fx.cardOffer);
+      const offers = Engine.rollCardRewards(rng, metaForEngine(), fx.cardOffer, aethOpts());
       if (fx.cardAuto && offers.length) {
         run.deck.push({ id: offers[0].id, upgraded: false });
         toast(`🃏 The djinn presses <b>${offers[0].name}</b> into your hands`);
@@ -997,7 +1001,7 @@
 
   /* ---------- hand & cards ---------- */
   function renderCardEl(view, affordable) {
-    const RAR_ICON = { common: '◦', uncommon: '◆', rare: '★', legendary: '👑' };
+    const RAR_ICON = { common: '◦', uncommon: '◆', rare: '★', legendary: '👑', aetheria: '🜂' };
     const c = el('div', `card rar-${view.rarity}` + (view.upgraded ? ' upgraded' : '') + (view.token ? ' token' : '')
       + (affordable === false ? ' unaffordable' : ''), `
       <div class="ccost">${view.cost != null ? view.cost : ''}</div>
@@ -1314,7 +1318,7 @@
     if (relicHeal) { const h2 = Math.min(relicHeal, run.maxHp - run.hp); run.hp += h2; healed += h2; }
 
     const bonus = kind === 'boss' ? 0.7 : kind === 'elite' ? 0.35 : 0;
-    const offers = Engine.rollCardRewards(rng, metaForEngine(), bonus);
+    const offers = Engine.rollCardRewards(rng, metaForEngine(), bonus, Object.assign(aethOpts(), { guaranteeAetheria: kind === 'boss' }));
     const names = b.enemies.map(e => e.name).join(' & ');
 
     const m = overlayPanel(`<div class="rune-title">🏆 ${names} Defeated</div>

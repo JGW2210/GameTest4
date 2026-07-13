@@ -824,13 +824,27 @@
     return { world, columns };
   }
 
-  function rollCardRewards(rng, meta, bonus) {
+  // Aetheria (red) cards are only rollable from World 3 on Adept+ difficulty.
+  function aetheriaEligible(world, difficulty) {
+    return world >= 3 && difficulty && difficulty.id >= 1;
+  }
+
+  function rollCardRewards(rng, meta, bonus, opts) {
     const pool = CardData.rewardPool(meta);
     const out = [];
     const seen = new Set();
+    // W3+ bosses on higher difficulties always offer one aetheria card
+    if (opts && opts.aetheria && opts.guaranteeAetheria) {
+      const reds = pool.filter(c => c.rarity === 'aetheria');
+      if (reds.length) {
+        const c = pick(rng, reds);
+        seen.add(c.id);
+        out.push(c);
+      }
+    }
     let guard = 0;
     while (out.length < 3 && guard++ < 60) {
-      const rarity = CardData.rollRarity(rng, bonus);
+      const rarity = CardData.rollRarity(rng, bonus, opts);
       const options = pool.filter(c => c.rarity === rarity && !seen.has(c.id));
       if (!options.length) continue;
       const c = pick(rng, options);
@@ -864,7 +878,7 @@
     playCard, canAfford, guess, canGuess, changeWordLength, serveWord,
     scry, canScry, setTarget, targetEnemy, alive,
     enemyIntent, describeIntent, drainEvents, castSpell,
-    NODE_TYPES, generateWorldMap, encounterFor, rollCardRewards, FORGE, RUN_RULES,
+    NODE_TYPES, generateWorldMap, encounterFor, rollCardRewards, aetheriaEligible, FORGE, RUN_RULES,
     allLearned,
   };
 });

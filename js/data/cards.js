@@ -38,7 +38,7 @@
   else root.CardData = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
 
-  const C = 'common', U = 'uncommon', R = 'rare', L = 'legendary';
+  const C = 'common', U = 'uncommon', R = 'rare', L = 'legendary', A = 'aetheria';
 
   // id, name, rarity, fx, flavor, unlock
   const CARDS = [
@@ -177,6 +177,26 @@
     { id: 'aeonengine', cost: 5, name: 'Aeon Engine',      rarity: L, fx: { insightRune: 2, energyMax: 1, exhaust: true }, flavor: 'Powered by the future’s spare moments.', unlock: { kind: 'wins', n: 4 } },
     { id: 'penultima',  cost: 5, name: 'PENULTIMA',        rarity: L, fx: { dmg: 48, exhaust: true },        flavor: 'The second-to-last word. You do not want the last.', unlock: { kind: 'difficulty', d: 3 } },
 
+    /* ============ AETHERIA (red) — ultimate rarity ============
+     * Never rolled before World 3, and only on Adept difficulty or higher.
+     * Raw, synergy-free power: a late-run lifeline for ordinary decks. */
+    { id: 'aetherbolt',  cost: 2, name: 'Aetheric Lance',    rarity: A, fx: { dmg: 30, insight: 2 },
+      flavor: 'A sentence from before language, sharpened.' },
+    { id: 'aetherward',  cost: 2, name: 'Aetheric Bulwark',  rarity: A, fx: { block: 24, heal: 8, insight: 1 },
+      flavor: 'The margin of a page no quill has touched.' },
+    { id: 'aetherstorm', cost: 4, name: 'Aetherstorm',       rarity: A, fx: { dmg: 16, aoe: true, stun: 1, exhaust: true },
+      flavor: 'The sky forgets whose side it was on.' },
+    { id: 'aetherheart', cost: 3, name: 'Heart of Aether',   rarity: A, fx: { maxHp: 12, heal: 12, str: 2, exhaust: true },
+      flavor: 'It beats once per age. It just beat.' },
+    { id: 'aetherclock', cost: 3, name: 'Clock of Unhours',  rarity: A, fx: { stun: 1, aoe: true, draw: 2, exhaust: true },
+      flavor: 'Everyone else is briefly optional.' },
+    { id: 'aetherquill', cost: 1, name: 'Quill of the First Scribe', rarity: A, fx: { reveal: 2, insight: 3, freeGuess: 1, exhaust: true },
+      flavor: 'It already knows what you meant to write.' },
+    { id: 'aetherfont',  cost: 2, name: 'Font of Aether',    rarity: A, fx: { insightRune: 2, heal: 5, exhaust: true },
+      flavor: 'Drink. The well minds being empty less than you do.' },
+    { id: 'aethercrown', cost: 3, name: 'Crown of the Unwritten', rarity: A, fx: { energyMax: 2, str: 2, exhaust: true },
+      flavor: 'Rule the sentence before it is spoken.' },
+
     /* ============ CLASS / STARTER-ONLY (not in reward pool) ============ */
     { id: 'heavybolt', cost: 1,  name: 'Heavy Bolt',       rarity: C, fx: { dmg: 8, insight: 1 },  starter: true, flavor: 'Warmage standard issue.' },
     { id: 'ironward', cost: 1,   name: 'Iron Ward',        rarity: C, fx: { block: 8, insight: 1 }, starter: true, flavor: 'Warmage standard issue.' },
@@ -184,8 +204,8 @@
     { id: 'veilward', cost: 1,   name: 'Veil Ward',        rarity: C, fx: { block: 6, insight: 2 }, starter: true, flavor: 'Woven from second sight.' },
   ];
 
-  const RARITY_WEIGHTS = { common: 65, uncommon: 25, rare: 8, legendary: 2 };
-  const RARITY_ORDER = ['common', 'uncommon', 'rare', 'legendary'];
+  const RARITY_WEIGHTS = { common: 65, uncommon: 25, rare: 8, legendary: 2, aetheria: 0 };
+  const RARITY_ORDER = ['common', 'uncommon', 'rare', 'legendary', 'aetheria'];
 
   const BY_ID = {};
   CARDS.forEach(c => { BY_ID[c.id] = c; });
@@ -284,12 +304,14 @@
     return CARDS.filter(c => !c.starter && isUnlocked(c, meta));
   }
 
-  function rollRarity(rng, bonus) {
-    // bonus shifts weight from common toward better rarities (elite/boss rewards)
+  function rollRarity(rng, bonus, opts) {
+    // bonus shifts weight from common toward better rarities (elite/boss rewards).
+    // opts.aetheria enables the red ultimate rarity (World 3+, Adept+ only).
     let w = Object.assign({}, RARITY_WEIGHTS);
     if (bonus) {
-      w = { common: Math.max(10, 65 - 30 * bonus), uncommon: 25 + 12 * bonus, rare: 8 + 12 * bonus, legendary: 2 + 6 * bonus };
+      w = { common: Math.max(10, 65 - 30 * bonus), uncommon: 25 + 12 * bonus, rare: 8 + 12 * bonus, legendary: 2 + 6 * bonus, aetheria: 0 };
     }
+    if (opts && opts.aetheria) w.aetheria = 7 + 10 * (bonus || 0);
     const total = RARITY_ORDER.reduce((s, r) => s + w[r], 0);
     let roll = rng() * total;
     for (const r of RARITY_ORDER) { roll -= w[r]; if (roll <= 0) return r; }

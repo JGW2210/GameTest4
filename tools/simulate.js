@@ -223,7 +223,7 @@ function runBattle(state, enemies, world, stage, skill, rng) {
 }
 
 /* ---------- events ---------- */
-function applyEvent(state, rng) {
+function applyEvent(state, rng, world) {
   const ev = EventData.EVENTS[Math.floor(rng() * EventData.EVENTS.length)];
   // policy: prefer relic > learn > heal-if-low > gold; skip costs we can't pay
   const scored = ev.choices.map(c => {
@@ -275,7 +275,7 @@ function applyEvent(state, rng) {
     if (best && state.deck.length < 28) state.deck.push(Object.assign({}, best));
   }
   if (fx.cardOffer != null) {
-    const offers = Engine.rollCardRewards(rng, state.meta, fx.cardOffer);
+    const offers = Engine.rollCardRewards(rng, state.meta, fx.cardOffer, { aetheria: Engine.aetheriaEligible(world, state.diff) });
     if (offers.length && state.deck.length < 26) state.deck.push({ id: offers[0].id, upgraded: false });
   }
 }
@@ -320,7 +320,7 @@ function simulateRun(clsId, diffIdx, learnedCount, skill, seed, metaOpts) {
           if (r2.length) state.relics.push(r2[0].id);
         }
         const bonus = node.type === 'boss' ? 0.7 : node.type === 'elite' ? 0.35 : 0;
-        const offers = Engine.rollCardRewards(rng, state.meta, bonus);
+        const offers = Engine.rollCardRewards(rng, state.meta, bonus, { aetheria: Engine.aetheriaEligible(world, state.diff), guaranteeAetheria: node.type === 'boss' });
         if (offers.length && state.deck.length < 26) {
           const bestOffer = offers.slice().sort((a, z) => rewardScore(z, state) - rewardScore(a, state))[0];
           if (rewardScore(bestOffer, state) > 6) state.deck.push({ id: bestOffer.id, upgraded: false });
@@ -328,7 +328,7 @@ function simulateRun(clsId, diffIdx, learnedCount, skill, seed, metaOpts) {
       } else if (node.type === 'treasure') {
         state.gold += Math.round((Engine.RUN_RULES.treasureGold[0] + rng() * (Engine.RUN_RULES.treasureGold[1] - Engine.RUN_RULES.treasureGold[0])) * state.diff.goldMult);
         if (rng() < Engine.RUN_RULES.treasureCardChance && state.deck.length < 26) {
-          const offers = Engine.rollCardRewards(rng, state.meta, 0.2);
+          const offers = Engine.rollCardRewards(rng, state.meta, 0.2, { aetheria: Engine.aetheriaEligible(world, state.diff) });
           if (offers.length) state.deck.push({ id: offers[0].id, upgraded: false });
         }
       } else if (node.type === 'shrine') {
@@ -341,7 +341,7 @@ function simulateRun(clsId, diffIdx, learnedCount, skill, seed, metaOpts) {
           else state.gold += Engine.RUN_RULES.shrineGold;
         }
       } else if (node.type === 'event') {
-        applyEvent(state, rng);
+        applyEvent(state, rng, world);
       }
       while (state.gold >= Engine.FORGE.upgradeCost(state.upgrades) + 40) {
         const target = state.deck.find(c => !c.upgraded && (CardData.BY_ID[c.id].fx.dmg || CardData.BY_ID[c.id].fx.block || CardData.BY_ID[c.id].fx.insight));
@@ -377,6 +377,7 @@ function rewardScore(cardDef, state) {
   if (fx.stun) s += 10;
   s += (fx.heal || 0) * 0.5 + (fx.freeGuess || 0) * 4;
   s -= (cardDef.cost || 0) * 1.5;
+  if (cardDef.rarity === 'aetheria') s += 20; // raw power is never a dead pick
   return s;
 }
 

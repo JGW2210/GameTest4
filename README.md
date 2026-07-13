@@ -77,9 +77,13 @@ encounters** (10 choice events — cursed lexicons, ink-imp wagers, bound djinn�
 world boss. The **Arcane Forge** is always reachable from the map: upgrade cards (×1.5
 effects) or unbind them.
 
-- **129 cards** across common (65%) / uncommon (25%) / rare (8%) / legendary (2%),
+- **137 cards** across common (65%) / uncommon (25%) / rare (8%) / legendary (2%),
   including energy-ramp cards (Leyline Binding, Grand Conduit, Aeon Engine) and 4–5⚡
   endgame bombs (The Omnilex, PENULTIMA). 17 cards are **unlockable** via achievements.
+- **AETHERIA** — the red ultimate rarity. Eight raw-power cards (Aetheric Lance,
+  Clock of Unhours, Crown of the Unwritten…) that only appear from **World 3 onward
+  on Adept difficulty or higher** — and every W3+ boss there offers one. A late-run
+  lifeline for decks that never found their synergy.
 - **28 relics** in two rarity tiers (rarer tier rolls 3× less often) — Coal of the
   First Word (+1 max ⚡), Resonant Bell / Choir of Echoes (+10/20% resonance),
   Lexicographer's Monocle / Index of All Things (+1/+2 mastered-length reveals)…
@@ -101,7 +105,7 @@ novice/adept/veteran cognition models for the word-guessing. Final targets
 | Fresh grimoire, first runs (Novice) | ~1% even for a *perfectly disciplined* sim player |
 | Deep grimoire (140 words, Novice) | 10–22% generic decks · **~58% tome-synergy (Archivist)** |
 | Complete 180-word grimoire (Novice) | ~28% |
-| Higher difficulties | near-zero for generic decks; synergy builds (tome-casting, resonance, free guesses, energy ramp) are the only way through — Archivist reaches ~21% on Archmage |
+| Higher difficulties | Adept ~4% / Master ~3% / Archmage ~1% for generic decks (Aetheria cards keep them off zero); synergy builds dominate — Archivist reaches ~33% on Archmage |
 
 ```bash
 node tools/validate.js     # word pool integrity
