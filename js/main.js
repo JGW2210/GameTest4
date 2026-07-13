@@ -196,21 +196,70 @@
     row.appendChild(speak); row.appendChild(leave);
     m.p.appendChild(row);
 
+    // The tome answers to a handful of whispered words:
+    const SECRETS = {
+      WORDSMITH: {
+        apply() {
+          const all = [];
+          Object.values(WordData.POOLS).forEach(pool => all.push(...pool));
+          meta.learnedWords = all.slice();
+        },
+        color: '#ffd700',
+        msg: '🗝️ <b>The tome recognizes its maker.</b> All 180 words engrave themselves at once.',
+      },
+      RESETTIA: {
+        apply() {
+          // forget everything unlock-related; only run history remains
+          meta.learnedWords = [];
+          meta.discoveredPower = [];
+          meta.totalWins = 0;
+          meta.winsByDifficulty = {};
+          meta.bestDifficultyWin = -1;
+          meta.classWins = {};
+          meta.firstGuessCasts = 0;
+          meta.bestWorld = 1;
+          meta.unlockAllClasses = false;
+          meta.unlockAllDifficulties = false;
+          meta.unlockArchivist = false;
+        },
+        color: '#8a8578',
+        msg: '🌫️ <b>The tome forgets.</b> Every engraving fades; every unlocked door swings shut.',
+      },
+      SKELETUS: {
+        apply() {
+          meta.unlockAllClasses = true;
+          meta.unlockAllDifficulties = true;
+        },
+        color: '#e8d9b0',
+        msg: '💀 <b>A skeleton key of old bone.</b> Every class and every difficulty stands open.',
+      },
+      ARCHANEUM: {
+        apply() { meta.unlockArchivist = true; },
+        color: '#a887ff',
+        msg: '📜 <b>The Archive answers.</b> THE ARCHIVIST steps from between the shelves.',
+      },
+      VAELORA: {
+        apply() { meta.unlockAllDifficulties = true; },
+        color: '#c0503f',
+        msg: '🔥 <b>The pages harden.</b> All difficulties lie open — even the one that reads YOU.',
+      },
+    };
+
     const submit = () => {
       const word = (input.value || '').trim().toUpperCase();
-      if (word === 'WORDSMITH') {
-        const all = [];
-        Object.values(WordData.POOLS).forEach(pool => all.push(...pool));
-        meta.learnedWords = all.slice();
+      if (!word) return;
+      const secret = SECRETS[word];
+      if (secret) {
+        secret.apply();
         SaveSystem.saveMeta(meta);
         m.close();
         Sfx.power();
         FX.confetti();
         FX.powerNova(window.innerWidth / 2, window.innerHeight / 2);
-        FX.runes(window.innerWidth / 2, window.innerHeight / 3, 'WORDSMITH', { color: '#ffd700', size: 30 });
-        toast('🗝️ <b>The tome recognizes its maker.</b> All 180 words engrave themselves at once.', 4600);
+        FX.runes(window.innerWidth / 2, window.innerHeight / 3, word, { color: secret.color, size: 30 });
+        toast(secret.msg, 4600);
         renderTitle();
-      } else if (word) {
+      } else {
         shakeTome();
         Sfx.wrong();
         input.value = '';

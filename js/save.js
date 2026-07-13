@@ -18,6 +18,10 @@
       bestWorld: 1,
       runsPlayed: 0,
       spellsCast: 0,
+      // whispered-secret overrides
+      unlockAllClasses: false,
+      unlockAllDifficulties: false,
+      unlockArchivist: false,
     };
   }
 

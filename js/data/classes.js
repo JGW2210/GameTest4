@@ -82,6 +82,7 @@
   function classUnlocked(cls, meta) {
     if (!cls.unlock) return true;
     if (!meta) return false;
+    if (meta.unlockAllClasses || meta.unlockArchivist) return true; // whispered secrets
     if (cls.unlock.kind === 'allClassWins') {
       return cls.unlock.ids.every(id => (meta.classWins || {})[id]);
     }
@@ -91,6 +92,7 @@
   function difficultyUnlocked(diff, meta) {
     if (!diff.unlock) return true;
     if (!meta) return false;
+    if (meta.unlockAllDifficulties) return true; // whispered secrets
     return (meta.bestDifficultyWin ?? -1) >= diff.unlock.winsOn;
   }
 
