@@ -38,6 +38,7 @@
 
   const HAND_CAP = 8;
   const BASE_ENERGY = 3;
+  const INSIGHT_CAP = 10; // insight never pools past this — no cross-battle hoarding
   const FIRST_GUESS_MULT = 1.5;
   const POWER_MULT = 2;
 
@@ -69,6 +70,12 @@
 
   function relicMod(b, key) { return RelicData.mod(b.relics, key); }
 
+  function gainInsight(b, n) {
+    const amt = Math.max(0, Math.min(n, INSIGHT_CAP - b.player.insight));
+    b.player.insight += amt;
+    return amt;
+  }
+
   function createBattle(opts) {
     // opts: { rng, cls, deck:[{id,upgraded}], hp, maxHp, enemyIds:[{id,scale}]|enemyId,
     //         world, stage, difficulty, meta:{learnedWords:Set, discoveredPower:Set},
@@ -94,7 +101,7 @@
       player: {
         hp: opts.hp, maxHp: opts.maxHp, block: 0, str: 0, wardBonus: 0, thorns: 0,
         weak: 0, vuln: 0, regen: 0,
-        insight: opts.insight || 0,
+        insight: 0, // fresh every battle, capped at INSIGHT_CAP
         resonance: 0.35 + RelicData.mod(relics, 'resonance') / 100,
         freeGuesses: RelicData.mod(relics, 'freeGuessPerBattle'),
         energy: 0, maxEnergy,
@@ -252,7 +259,7 @@
       enemy.hp = 0;
       emit(b, { type: 'enemyDown', idx: b.enemies.indexOf(enemy), name: enemy.name });
       const bonus = relicMod(b, 'insightOnKill');
-      if (bonus && alive(b).length) { b.player.insight += bonus; emit(b, { type: 'insight', amount: bonus }); }
+      if (bonus && alive(b).length) { gainInsight(b, bonus); emit(b, { type: 'insight', amount: bonus }); }
     }
     return d;
   }
@@ -326,7 +333,7 @@
     const bonus = ATTUNE_TIERS[tier];
     if (!bonus) return;
     const chalice = relicMod(b, 'attuneBonus');
-    if (bonus.insight) b.player.insight += bonus.insight;
+    if (bonus.insight) gainInsight(b, bonus.insight);
     if (bonus.energyMax) b.player.maxEnergy += bonus.energyMax;
     if (bonus.energyNow || chalice) b.player.energy += (bonus.energyNow || 0) + chalice;
     if (bonus.str) b.player.str += bonus.str;
@@ -342,7 +349,7 @@
       case 'pestis': if (prior && (fx.poison || fx.dmg)) fx._poisonBonus = 3 * prior; break;
       case 'sanguine': if (prior) fx._healBonus = 4 * prior; break;
       case 'umbral': if (prior) fx._durBonus = Math.min(2, prior); break;
-      case 'mentis': if (prior) { b.player.insight += prior; emit(b, { type: 'insight', amount: prior }); } break;
+      case 'mentis': if (prior) { gainInsight(b, prior); emit(b, { type: 'insight', amount: prior }); } break;
       case 'fulmen': if (prior % 2 === 1) fx._stunBonus = 1; break;
     }
   }
@@ -376,7 +383,7 @@
       if (fx.stun || fx._stunBonus) e.stun += (fx.stun || 0) + (fx._stunBonus || 0);
     }
     if (fx.str) b.player.str += Math.round(fx.str * mult);
-    if (fx.insight) b.player.insight += Math.round(fx.insight * mult);
+    if (fx.insight) gainInsight(b, Math.round(fx.insight * mult));
     if (fx.energyNow) { b.player.energy += fx.energyNow; emit(b, { type: 'energy', amount: fx.energyNow }); }
     if (fx.energyMax) { b.player.maxEnergy += fx.energyMax; b.player.energy += fx.energyMax; emit(b, { type: 'energyMax', amount: fx.energyMax }); }
     if (fx.freeGuess) b.player.freeGuesses += fx.freeGuess;
@@ -430,7 +437,7 @@
     if (opts.firstGuess) {
       b.stats.firstGuessCasts++;
       const fgi = relicMod(b, 'firstGuessInsight');
-      if (fgi) { b.player.insight += fgi; emit(b, { type: 'insight', amount: fgi }); }
+      if (fgi) { gainInsight(b, fgi); emit(b, { type: 'insight', amount: fgi }); }
     }
     if (isPower && !b.meta.discoveredPower.has(word)) {
       b.meta.discoveredPower.add(word);
@@ -472,7 +479,7 @@
         b.stats.wordsLearned.push(g);
         emit(b, { type: 'wordLearned', word: g });
       }
-      if (b.player.refundOnCorrect) b.player.insight += 1;
+      if (b.player.refundOnCorrect) gainInsight(b, 1);
       castSpell(b, g, { firstGuess });
       if (!b.over) serveWord(b, b.wordLen);
       rollResonance(b);
@@ -530,7 +537,7 @@
       if (fx.blockPerLearned) base += fx.blockPerLearned * b.meta.learnedWords.size;
       gainBlock(b, base);
     }
-    if (fx.insight) { b.player.insight += fx.insight; emit(b, { type: 'insight', amount: fx.insight }); }
+    if (fx.insight) { gainInsight(b, fx.insight); emit(b, { type: 'insight', amount: fx.insight }); }
     if (fx.energyNow) { b.player.energy += fx.energyNow; emit(b, { type: 'energy', amount: fx.energyNow }); }
     if (fx.energyMax) { b.player.maxEnergy += fx.energyMax; b.player.energy += fx.energyMax; emit(b, { type: 'energyMax', amount: fx.energyMax }); }
     if (fx.resonance) b.player.resonance += fx.resonance / 100;
@@ -604,7 +611,7 @@
     b.player.energy = b.player.maxEnergy;
     b.player.scryLeft = 1 + relicMod(b, 'scryPerTurn');
     const gain = b.cls.freeInsight + b.player.insightRune + relicMod(b, 'insightPerTurn');
-    if (gain) { b.player.insight += gain; emit(b, { type: 'insight', amount: gain, free: true }); }
+    if (gain) { gainInsight(b, gain); emit(b, { type: 'insight', amount: gain, free: true }); }
     const bpt = relicMod(b, 'blockPerTurn');
     if (bpt) gainBlock(b, bpt);
     if (b.player.regen) healPlayer(b, b.player.regen);
@@ -845,7 +852,7 @@
 
   return {
     makeRng, pick, shuffle,
-    HAND_CAP, BASE_ENERGY, FIRST_GUESS_MULT, POWER_MULT, ATTUNE_TIERS,
+    HAND_CAP, BASE_ENERGY, INSIGHT_CAP, FIRST_GUESS_MULT, POWER_MULT, ATTUNE_TIERS,
     makeCard, cardView, createBattle, startPlayerTurn, endTurn,
     playCard, canAfford, guess, canGuess, changeWordLength, serveWord,
     scry, canScry, setTarget, targetEnemy, alive,

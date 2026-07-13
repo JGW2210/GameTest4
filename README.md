@@ -39,7 +39,8 @@ Desktop and portrait/mobile layouts included.
 - **Signature spells.** ~40 notable words carry hand-authored identities (★): IGNIS
   burns every foe, UMBRA blinds, MORTIS executes the dying, OMNIPOTENS swells your
   energy reserves…
-- **Insight carries over** between turns and battles; energy refreshes each turn and
+- **Insight carries over between turns** within a battle, but is **capped at 10 and
+  resets every battle** — no cross-battle hoarding. Energy refreshes each turn and
   its ceiling can be **ramped past 4–5⚡** with attunement, relics, and rare cards for
   endgame builds.
 
@@ -94,12 +95,12 @@ novice/adept/veteran cognition models for the word-guessing. Final targets
 
 | Scenario | Win rate |
 |---|---:|
-| Fresh grimoire, first runs (Novice) | ~33–56% for a *perfectly disciplined* sim player — meaningfully lower for humans |
-| 5–7L pools mastered (Novice) | ~60% |
-| Deep grimoire (140 words, Novice) | 96–100% (mastery cruises the entry difficulty) |
-| Deep grimoire, Adept | ~87% |
-| Deep grimoire, Master | ~70% |
-| Complete 180-word grimoire, Archmage | ~62% (Archivist: ~77%) |
+| Fresh grimoire, first runs (Novice) | ~8–15% for a *perfectly disciplined* sim player |
+| 5–7L pools mastered (Novice) | ~40–55% — the first-win milestone |
+| Deep grimoire (140 words, Novice) | ~60–75% |
+| Deep grimoire, Adept | ~45% |
+| Deep grimoire, Master | ~32% |
+| Complete 180-word grimoire, Archmage | ~20% (Archivist: ~46%) |
 
 ```bash
 node tools/validate.js     # word pool integrity

@@ -373,7 +373,6 @@
       <div class="hud" style="margin-top:12px">
         <span class="stat">❤️ ${run.hp}/${run.maxHp}</span>
         <span class="stat">🪙 ${run.gold}</span>
-        <span class="stat">💡 ${run.insight}</span>
       </div>
       <div class="hud">
         <span class="stat">${cls.icon} ${cls.name}</span>
@@ -644,7 +643,7 @@
     battle = Engine.createBattle({
       rng: runRng(), cls, deck: run.deck, hp: run.hp, maxHp: run.maxHp,
       enemyIds: node.enemies, world: run.world, stage: node.stage,
-      difficulty: diff, meta: metaForEngine(), wordLen: run.wordLen, insight: run.insight,
+      difficulty: diff, meta: metaForEngine(), wordLen: run.wordLen,
       relics: run.relics,
     });
     battle._node = node;
@@ -718,7 +717,7 @@
           <b>You</b>
           <span class="orb-row">
             <span class="energy-orb" id="energy-orb" title="Energy — cards cost ⚡">⚡ ${b.player.energy}/${b.player.maxEnergy}</span>
-            <span class="insight-orb" id="insight-orb" title="Insight — each guess costs 1">💡 ${b.player.insight}</span>
+            <span class="insight-orb" id="insight-orb" title="Insight — each guess costs 1 · capped at ${Engine.INSIGHT_CAP} · resets each battle">💡 ${b.player.insight}/${Engine.INSIGHT_CAP}</span>
           </span>
         </div>
         <div class="hpbar player" style="margin-top:5px"><div class="fill" style="width:${100 * b.player.hp / b.player.maxHp}%"></div>
@@ -1233,7 +1232,6 @@
   function finishBattle() {
     const b = battle;
     absorbBattleMeta(b);
-    run.insight = b.player.insight;
     run.maxHp = b.player.maxHp;
     run.gold += b.goldGained;
     if (b.won) {

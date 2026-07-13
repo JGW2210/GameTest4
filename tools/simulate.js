@@ -208,7 +208,7 @@ function runBattle(state, enemies, world, stage, skill, rng) {
   const b = Engine.createBattle({
     rng, cls: state.cls, deck: state.deck, hp: state.hp, maxHp: state.maxHp,
     enemyIds: enemies, world, stage, difficulty: state.diff, meta: state.meta,
-    wordLen: 5, insight: state.insight, relics: state.relics,
+    wordLen: 5, relics: state.relics,
   });
   b.wordLen = pickLength(b, unlocked, skill);
   Engine.startPlayerTurn(b);
@@ -217,7 +217,6 @@ function runBattle(state, enemies, world, stage, skill, rng) {
   while (!b.over && turns++ < 60) playTurn(b, skill, rng);
   if (!b.over) { b.over = true; b.won = false; }
   state.hp = b.player.hp;
-  state.insight = b.player.insight;
   state.maxHp = b.player.maxHp;
   state.gold += b.goldGained;
   return { won: b.won, turns, hpLeft: b.player.hp };
