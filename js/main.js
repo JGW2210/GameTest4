@@ -11,7 +11,6 @@
   const $bhud = document.getElementById('battle-hud');
   const $marks = document.getElementById('bookmarks');
   const $toast = document.getElementById('toast');
-  const $pageToggle = document.getElementById('page-toggle');
 
   /* ---------- stage scaling ---------- */
   function isPortrait() {
@@ -92,12 +91,8 @@
     $hand.innerHTML = '';
     $endTurn.classList.toggle('hidden', !on);
     $bhud.classList.toggle('hidden', !on);
-    $pageToggle.classList.toggle('hidden', !on || !isPortrait());
   }
-  $pageToggle.onclick = () => {
-    document.getElementById('tome').classList.toggle('show-left');
-    Sfx.flip();
-  };
+  const COARSE_POINTER = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
   function bookmarks(list) {
     $marks.innerHTML = '';
@@ -134,7 +129,6 @@
 
   function renderTitle() {
     screen = 'title'; setBattleChrome(false); bookmarks([]);
-    document.getElementById('tome').classList.remove('show-left');
     $L.innerHTML = ''; $R.innerHTML = '';
     const left = el('div', '', `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%">
@@ -363,7 +357,6 @@
    * ============================================================ */
   function renderMap() {
     screen = 'map'; setBattleChrome(false);
-    document.getElementById('tome').classList.remove('show-left');
     bookmarks([
       ['Grimoire', 'arc', () => renderGrimoireOverlay()],
       ['Arcane Forge', 'gold', () => renderForgeOverlay()],
@@ -975,7 +968,21 @@
       const mid = (n - 1) / 2;
       c.style.setProperty('--fan-r', (i - mid) * 4);
       c.style.setProperty('--fan-y', Math.abs(i - mid) * 7);
-      c.onclick = () => onPlayCard(card, c);
+      if (COARSE_POINTER) {
+        // touch: first tap raises the card to read it, second tap plays it
+        c.onclick = () => {
+          if (!c.classList.contains('inspect')) {
+            $hand.querySelectorAll('.card.inspect').forEach(x => x.classList.remove('inspect'));
+            c.classList.add('inspect');
+            Sfx.key();
+            return;
+          }
+          c.classList.remove('inspect');
+          onPlayCard(card, c);
+        };
+      } else {
+        c.onclick = () => onPlayCard(card, c);
+      }
       $hand.appendChild(c);
     });
   }
@@ -1323,7 +1330,6 @@
     SaveSystem.clearRun();
     flipTo(() => {
       screen = 'gameover'; bookmarks([]);
-      document.getElementById('tome').classList.remove('show-left');
       $L.innerHTML = `
         <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center">
           <div style="font-size:70px">${won ? '👑' : '🕯️'}</div>

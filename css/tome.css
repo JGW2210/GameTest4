@@ -21,6 +21,11 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
 
+/* single fast taps everywhere — no double-tap zoom on touch screens */
+body, button, .card, .key, .tile, .map-node, .len-pill, .diff-pill, .class-card, .foe-box {
+  touch-action: manipulation;
+}
+
 html, body {
   width: 100%; height: 100%; overflow: hidden;
   background: #14100c;
@@ -380,16 +385,20 @@ button.small-btn { padding: 4px 10px; font-size: 12.5px; }
   100% { transform: translateY(-72px) scale(1); opacity: 0; }
 }
 
-/* toast banner */
+/* toast banner — retracts by its OWN height (+ margin) so tall multi-line
+ * toasts on narrow screens still leave the viewport completely */
 #toast {
-  position: fixed; top: 26px; left: 50%; transform: translateX(-50%) translateY(-90px);
+  position: fixed; top: 0; left: 50%;
+  transform: translate(-50%, calc(-100% - 30px));
+  margin-top: 26px; max-width: min(92vw, 620px);
   z-index: 96; background: linear-gradient(180deg, #3c2670, #2a1a50);
   color: #efe6ff; border: 1px solid var(--arcane-glow); border-radius: 12px;
   padding: 10px 26px; font-size: 16px; font-variant: small-caps; letter-spacing: 0.04em;
   box-shadow: 0 8px 30px rgba(0,0,0,0.6), 0 0 20px rgba(123,79,216,0.5);
-  transition: transform 0.4s cubic-bezier(0.2, 1.4, 0.4, 1); text-align: center;
+  transition: transform 0.4s cubic-bezier(0.2, 1.4, 0.4, 1), visibility 0.4s;
+  text-align: center; visibility: hidden; pointer-events: none;
 }
-#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.show { transform: translate(-50%, 0); visibility: visible; }
 
 /* bookmark buttons attached to tome */
 #bookmarks { position: absolute; right: -6px; top: 70px; display: flex; flex-direction: column; gap: 8px; z-index: 55; }
@@ -474,36 +483,88 @@ button.small-btn { padding: 4px 10px; font-size: 12.5px; }
 /* map node art */
 .map-node .node-art { pointer-events: none; }
 
-/* ============ V2: portrait / touch layout ============ */
-#page-toggle { display: none; }
+/* ============ V2: portrait / touch layout ============
+ * Both pages stack vertically inside a scrolling tome — no page-toggle —
+ * so every screen's content (class list, foes, word panel…) is reachable. */
+#page-toggle { display: none !important; }
 @media (max-aspect-ratio: 9/10), (max-width: 700px) {
   #stage { width: 100vw; height: 100vh; left: 0; top: 0; transform: none; }
-  #tome { width: calc(100vw - 12px); height: calc(100vh - 190px); left: 6px; top: 6px; transform: none; perspective: none; }
+  #tome {
+    width: calc(100vw - 10px); left: 5px; top: 5px; transform: none;
+    height: calc(100vh - 168px - env(safe-area-inset-bottom, 0px));
+    perspective: 1400px;
+  }
   #tome.shake { animation: shakem 0.4s; }
   @keyframes shakem { 20% { transform: translateX(-8px); } 60% { transform: translateX(6px); } }
-  #tome-inner { border-radius: 12px; padding: 10px; }
-  #book { inset: 10px; }
+  #tome-inner { border-radius: 12px; padding: 8px; }
+  #book {
+    inset: 8px; flex-direction: column;
+    overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
   #spine { display: none; }
-  .page { display: none; }
-  .page.right { display: block; border-radius: 8px; }
-  #tome.show-left .page.left { display: block; border-radius: 8px; }
-  #tome.show-left .page.right { display: none; }
-  .page-content { inset: 12px 10px; }
-  #page-toggle { display: block; position: absolute; left: 10px; bottom: 152px; z-index: 65;
-    border-radius: 30px; padding: 9px 16px; font-size: 14px; }
-  #hand-zone { width: 100vw; height: 150px; bottom: 0; left: 0; transform: none;
-    overflow-x: auto; overflow-y: visible; justify-content: flex-start; padding: 0 8px; }
+  .page { position: relative; flex: none; display: block; overflow: visible; }
+  .page.left, .page.right { border-radius: 8px; box-shadow: inset 0 0 22px rgba(58,44,26,0.18); }
+  .page.left { margin-bottom: 8px; }
+  .page-content { position: relative; inset: auto; padding: 14px 12px; min-height: 30px; }
+  /* percentage-height wrappers flow naturally in the stacked layout */
+  .page-content > div[style*="height:100%"], .page-content > div[style*="height: 100%"] { height: auto !important; }
+  /* full-width page flip, fixed over the tome so it isn't clipped by scroll */
+  #flipper {
+    position: fixed; top: 5px; left: 5px; right: 5px; width: auto;
+    bottom: calc(163px + env(safe-area-inset-bottom, 0px));
+  }
+  #flipper .ff, #flipper .fb { border-radius: 8px; }
+  #battle-log { flex: none; max-height: 130px; min-height: 50px; }
+  #map-svg { width: 100%; height: auto; aspect-ratio: 470 / 540; }
+  #guess-grid { max-height: none; overflow-y: visible; }
+  /* keep the last page's tail clear of the floating End Turn / HUD chrome */
+  .page:last-child .page-content { padding-bottom: 96px; }
+  #hand-zone {
+    width: 100vw; height: calc(150px + env(safe-area-inset-bottom, 0px));
+    bottom: 0; left: 0; transform: none;
+    padding: 0 8px env(safe-area-inset-bottom, 0px);
+    overflow-x: auto; overflow-y: visible; justify-content: flex-start;
+    align-items: flex-end; -webkit-overflow-scrolling: touch;
+  }
   .card { min-width: 118px; margin: 0 -6px; }
-  .card:hover { transform: translateY(-24px) scale(1.15); }
-  #end-turn { right: 10px; bottom: 158px; padding: 10px 16px; font-size: 14px; }
-  #battle-hud { left: 10px; bottom: 196px; }
-  #bookmarks { right: 0; top: 40px; }
+  /* flat card strip — the fan's vertical offsets would clip card bottoms */
+  #hand-zone .card { transform: none; }
+  #end-turn { right: 8px; bottom: calc(158px + env(safe-area-inset-bottom, 0px)); padding: 10px 16px; font-size: 14px; }
+  #battle-hud {
+    left: 8px; bottom: calc(166px + env(safe-area-inset-bottom, 0px));
+    background: rgba(20, 12, 6, 0.78); border-radius: 14px; padding: 5px 11px;
+    border: 1px solid rgba(201,162,39,0.35);
+  }
+  #bookmarks { right: 0; top: 34px; }
+  .bookmark { padding: 9px 5px; font-size: 11.5px; }
   .tile { width: 30px; height: 30px; font-size: 16px; }
   .tile.sm { width: 25px; height: 25px; font-size: 13px; }
-  .key { min-width: 24px; height: 38px; }
-  .panel { max-width: 94vw; max-height: 80vh; padding: 14px; }
-  .panel[style] { min-width: 0 !important; }
+  .key { min-width: 25px; height: 40px; }
+  .panel { max-width: 94vw; max-height: 82vh; padding: 14px; overflow-x: hidden; }
+  .panel, .panel div { min-width: 0 !important; }
+  .panel input { max-width: 86vw; }
+  .spell-row, .forge-card-row { flex-wrap: wrap; }
+  .spell-row .sd, .forge-card-row .fdesc { flex-basis: 100%; }
   .foe-box .foe-art { width: 58px; height: 58px; }
   .foe-box.single .foe-art { width: 84px; height: 84px; }
   .reward-cards { flex-wrap: wrap; }
+  .game-title { font-size: 34px; }
+  #toast { font-size: 14px; padding: 8px 16px; margin-top: 10px; }
+}
+
+/* touch pointers: hover-lift is replaced by tap-to-inspect (first tap raises
+ * the card to read it, second tap plays it) */
+@media (pointer: coarse) {
+  .card:hover {
+    transform: translateY(calc(var(--fan-y, 0) * 1px)) rotate(calc(var(--fan-r, 0) * 1deg));
+    z-index: auto;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.55);
+  }
+  .card.inspect, .card.inspect:hover {
+    transform: translateY(-52px) rotate(0) scale(1.34); z-index: 20;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.7), 0 0 18px rgba(201,162,39,0.4);
+  }
+  .reward-cards .card:hover { transform: none; }
+  .reward-cards .card.inspect { transform: translateY(-6px) scale(1.1); }
 }
