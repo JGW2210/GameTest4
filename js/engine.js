@@ -751,7 +751,7 @@
     if (bpt) gainBlock(b, bpt);
     if (b.player.regen) healPlayer(b, b.player.regen);
     let drawN = b.cls.draw + ((b.condition && b.condition.drawBonus) || 0);
-    if (b.turn === 1) drawN += relicMod(b, 'drawFirstTurn');
+    if (b.turn === 1) drawN += 2 + relicMod(b, 'drawFirstTurn'); // opening hand: class draw + 2 (5 for 3-draw classes)
     drawCards(b, drawN);
     if (b.cls.alwaysDrawsCastTome && !b.hand.some(c => c.fx.castTome) && b.hand.length < b.handCap) {
       const t = makeCard('casttome', false);

@@ -32,8 +32,8 @@
 
   /* ---- Scaling knobs (tuned by simulation) ---- */
   const SCALING = {
-    WORLD_HP:  [1.30, 2.20, 3.20, 4.55, 6.20, 7.40],
-    WORLD_DMG: [1.15, 1.70, 2.20, 2.80, 3.55, 4.10],
+    WORLD_HP:  [1.30, 2.20, 3.25, 4.65, 6.50, 7.80],
+    WORLD_DMG: [1.15, 1.70, 2.22, 2.85, 3.65, 4.25],
     SPIRAL_HP: 1.35,   // per tier beyond the table (endless)
     SPIRAL_DMG: 1.22,
     STAGE_HP_PER: 0.09,
