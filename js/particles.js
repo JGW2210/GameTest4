@@ -65,6 +65,22 @@
     burst(x, y, { count: 14, colors: [opts.color || '#fff', '#ffd700'], speed: 5, size: 3 });
   }
 
+  // a drift of motes from one point to another (e.g. unspent energy -> insight)
+  function beam(x1, y1, x2, y2, opts) {
+    opts = opts || {};
+    const n = opts.count || 14;
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      const jx = rnd(-8, 8), jy = rnd(-8, 8);
+      spawn({
+        kind: 'dot', x: x1 + (x2 - x1) * t + jx, y: y1 + (y2 - y1) * t + jy,
+        vx: (x2 - x1) / 60 + rnd(-0.4, 0.4), vy: (y2 - y1) / 60 + rnd(-0.4, 0.4),
+        g: 0, life: 1, decay: rnd(0.02, 0.045),
+        color: opts.color || '#c9a227', size: rnd(2, 4),
+      });
+    }
+  }
+
   function shield(x, y, opts) {
     opts = opts || {};
     spawn({ kind: 'ring', x, y, life: 1, decay: 0.03, r: 12, vr2: 2.6,
@@ -166,5 +182,5 @@
   }
   requestAnimationFrame(tick);
 
-  window.FX = { burst, runes, slash, shield, heal, confetti, powerNova, setAmbient };
+  window.FX = { burst, runes, slash, shield, heal, confetti, powerNova, beam, setAmbient };
 })();

@@ -38,6 +38,7 @@
   }
 
   const HAND_CAP = 8;
+  const KEEP_LIMIT = 5; // cards kept in hand past end of turn — the rest are shed
   const BASE_ENERGY = 3;
   const INSIGHT_CAP = 10; // insight never pools past this — no cross-battle hoarding
   const FIRST_GUESS_MULT = 1.5;
@@ -63,7 +64,7 @@
     }
     return { inst: instSeq++, id, name, rarity: base.rarity,
              cost: base.cost, fx, upgraded: !!upgraded, inscribed: inscribed || null,
-             flavor: base.flavor, token: false };
+             flavor: base.flavor, token: false, sharpen: 0 };
   }
 
   /* ============================================================
@@ -81,6 +82,7 @@
       id: e.id, name: e.name, icon: e.icon, boss: !!e.boss, elite: !!e.elite,
       hp, maxHp: hp, block: 0, str: 0, dmgMult: st.dmgMult * (scale ? Math.sqrt(scale) : 1),
       weak: 0, vuln: 0, poison: 0, burn: 0, burnTurns: 0, stun: 0, blind: 0,
+      affinity: e.affinity || null, posture: e.posture || null, _parried: false,
       patternIdx: 0, pattern: e.pattern, _choiceIdx: null,
     };
   }
@@ -315,16 +317,41 @@
     return { ok: true, present };
   }
 
+  /* ---------- elements: fire / frost / venom / storm ---------- */
+  function elemRelation(enemy, elem) {
+    const a = enemy && enemy.affinity;
+    if (!elem || !a) return null;
+    if (a.immune === elem) return 'immune';
+    if (a.weakTo === elem) return 'weak';
+    if (a.resist === elem) return 'resist';
+    return null;
+  }
+  // Full elemental multiplier vs one foe (class attunement + affinity).
+  function elemScale(b, enemy, elem) {
+    if (!elem) return 1;
+    let m = b.cls.elemMult || 1;
+    const rel = elemRelation(enemy, elem);
+    if (rel === 'immune') return 0;
+    if (rel === 'weak') m *= 1.5;
+    else if (rel === 'resist') m *= 0.5;
+    return m;
+  }
+
   /* ---------- damage plumbing ---------- */
-  function hitEnemy(b, enemy, base, tag) {
+  function hitEnemy(b, enemy, base, tag, elem) {
     let d = Math.max(0, base);
+    const rel = elemRelation(enemy, elem);
+    if (elem && b.cls.elemMult) d = Math.round(d * b.cls.elemMult);
+    if (rel === 'immune') d = 0;
+    else if (rel === 'weak') d = Math.floor(d * 1.5);
+    else if (rel === 'resist') d = Math.floor(d * 0.5);
     if (b.player.weak > 0) d = Math.floor(d * 0.75);
     if (enemy.vuln > 0) d = Math.floor(d * 1.5);
     const absorbed = Math.min(enemy.block, d);
     enemy.block -= absorbed;
     const hpLoss = d - absorbed;
     enemy.hp -= hpLoss;
-    emit(b, { type: 'enemyHit', amount: d, hpLoss, tag: tag || 'attack', idx: b.enemies.indexOf(enemy) });
+    emit(b, { type: 'enemyHit', amount: d, hpLoss, tag: tag || 'attack', idx: b.enemies.indexOf(enemy), elem: elem || null, elemRel: rel });
     if (enemy.hp <= 0) {
       enemy.hp = 0;
       emit(b, { type: 'enemyDown', idx: b.enemies.indexOf(enemy), name: enemy.name });
@@ -338,13 +365,21 @@
     opts = opts || {};
     hits = hits || 1;
     let total = 0;
+    const parried = new Set(); // a parry negates the whole card vs that foe
     for (let h = 0; h < hits; h++) {
       const targets = opts.aoe ? alive(b) : [targetEnemy(b)].filter(e => e && e.hp > 0);
       if (!targets.length) break;
       for (const e of targets) {
+        if (parried.has(e)) continue;
+        if (tag === 'card' && e.posture === 'parry' && !e._parried) {
+          e._parried = true;
+          parried.add(e);
+          emit(b, { type: 'parried', idx: b.enemies.indexOf(e), name: e.name });
+          continue;
+        }
         let dmg = base + b.player.str;
         if (opts.execute && e.hp <= e.maxHp * 0.25) dmg += opts.execute;
-        total += hitEnemy(b, e, dmg, tag);
+        total += hitEnemy(b, e, dmg, tag, opts.elem);
       }
     }
     checkBattleEnd(b);
@@ -432,7 +467,7 @@
     const durBonus = fx._durBonus || 0;
 
     if (fx.dmg) playerDealDamage(b, Math.round(fx.dmg * mult) + relicMod(b, 'spellDmg'), fx.hits || 1, 'spell',
-      { aoe, execute: fx.execute || 0 });
+      { aoe, execute: fx.execute || 0, elem: fx.elem });
     if (fx.nihil) { // The Great Nothing: erase a fraction of every foe's vitality
       for (const e of alive(b)) {
         const loss = Math.floor(e.hp * fx.nihil);
@@ -448,12 +483,13 @@
 
     const applyTo = aoe ? alive(b) : (tgt && tgt.hp > 0 ? [tgt] : []);
     for (const e of applyTo) {
+      const es = fx.elem ? elemScale(b, e, fx.elem) : 1; // affinity gates elemental dots too
       if (fx.burn || burnBonus && fx.dmg) {
-        const amt = Math.round((fx.burn || 0) * mult) + burnBonus;
+        const amt = Math.round((Math.round((fx.burn || 0) * mult) + burnBonus) * es);
         if (amt > 0) { e.burn += amt; e.burnTurns = Math.max(e.burnTurns, 2); }
       }
       if (fx.poison || poisonBonus && fx.dmg) {
-        const amt = Math.round((fx.poison || 0) * mult) + poisonBonus;
+        const amt = Math.round((Math.round((fx.poison || 0) * mult) + poisonBonus) * es);
         if (amt > 0) e.poison += amt;
       }
       if (fx.weak) e.weak += fx.weak + durBonus;
@@ -493,6 +529,7 @@
     const school = spell.school;
     const prior = b.schoolCasts[school] || 0;
     const fx = Object.assign({}, spell.fx);
+    if (spell.elem) fx.elem = spell.elem;
     const multRef = { mult };
     schoolComboApply(b, school, prior, fx, multRef);
     mult = multRef.mult;
@@ -618,8 +655,12 @@
   /* ---------- playing cards ---------- */
   function effectiveCost(b, card) {
     let c = card.cost;
+    if (card.inscribed) {
+      const sp = WordData.SPELLS[card.inscribed];
+      if (sp && sp.school === b.resonantSchool) c -= 1; // resonant hour favors its own school
+    }
     if (b.condition && b.condition.costCap != null) c = Math.min(c, b.condition.costCap);
-    return c;
+    return Math.max(0, c);
   }
   function canAfford(b, card) { return b.player.energy >= effectiveCost(b, card); }
 
@@ -642,26 +683,42 @@
       if (b.player.insight < tcost) return { ok: false, reason: 'insight' };
       b.player.energy -= cost;
       b.player.insight -= tcost;
+      b._cardsThisTurn = (b._cardsThisTurn || 0) + 1;
+      b._lastCardType = 'skill';
       emit(b, { type: 'cardPlayed', card: cardView(card) });
       castSpell(b, word, { tomeMult: fx.castTome * (b.cls.tomeMult || 1) });
+      postureHooks(b, cost);
       afterPlay(b, idx, card);
       return { ok: true };
     }
 
     b.player.energy -= cost;
+    b._cardsThisTurn = (b._cardsThisTurn || 0) + 1;
     emit(b, { type: 'cardPlayed', card: cardView(card) });
 
+    // flow: alternating attack/skill sharpens the sequence (+2 primary effect);
+    // held cards carry a sharpen edge (+1 per turn held, capped)
+    const isAttack = !!(fx.dmg || fx.dmgPerLearned || fx.dmgPerInsight || fx.dmgFromBlock || fx.dmgPerAttuned);
+    const kind = isAttack ? 'attack' : 'skill';
+    let boost = card.sharpen || 0;
+    if (b._lastCardType && b._lastCardType !== kind) {
+      boost += 2;
+      emit(b, { type: 'flow', bonus: 2 });
+    }
+    b._lastCardType = kind;
+
     if (fx.selfDmg) damagePlayer(b, fx.selfDmg, 'self');
-    if (fx.dmg || fx.dmgPerLearned || fx.dmgPerInsight || fx.dmgFromBlock || fx.dmgPerAttuned) {
-      let base = (fx.dmg || 0) + b.player.blade; // Inkblade charge rides attacks
+    if (isAttack) {
+      let base = (fx.dmg || 0) + b.player.blade + boost; // Inkblade charge rides attacks
       if (fx.dmgPerLearned) base += fx.dmgPerLearned * b.meta.learnedWords.size;
       if (fx.dmgPerInsight) base += fx.dmgPerInsight * b.player.insight;
       if (fx.dmgFromBlock) base += b.player.block;
       if (fx.dmgPerAttuned) base += fx.dmgPerAttuned * b.lengthsCast.length;
-      playerDealDamage(b, base, fx.hits || 1, 'card', { aoe: !!fx.aoe });
+      playerDealDamage(b, base, fx.hits || 1, 'card', { aoe: !!fx.aoe, elem: fx.elem });
     }
     if (fx.block || fx.blockPerLearned) {
       let base = fx.block || 0;
+      if (!isAttack) { base += boost; boost = 0; }
       if (fx.blockPerLearned) base += fx.blockPerLearned * b.meta.learnedWords.size;
       gainBlock(b, base);
     }
@@ -677,7 +734,7 @@
     if (fx.refundOnCorrect) b.player.refundOnCorrect = true;
     if (fx.castDiscount && !fx.castTome) b.player.castDiscount += fx.castDiscount;
     if (fx.draw) drawCards(b, fx.draw);
-    if (fx.heal) healPlayer(b, fx.heal);
+    if (fx.heal) { healPlayer(b, fx.heal + (!isAttack && !fx.block && !fx.blockPerLearned ? boost : 0)); }
     if (fx.regen) b.player.regen += fx.regen;
     if (fx.maxHp) { b.player.maxHp += fx.maxHp; b.player.hp += fx.maxHp; b.maxHpGained += fx.maxHp; }
     if (fx.str) b.player.str += fx.str;
@@ -685,10 +742,11 @@
     // enemy-status card effects hit the current target (or all if aoe)
     const applyTo = fx.aoe ? alive(b) : [targetEnemy(b)].filter(e => e && e.hp > 0);
     for (const e of applyTo) {
+      const es = fx.elem ? elemScale(b, e, fx.elem) : 1; // affinity gates elemental dots too
       if (fx.weak) e.weak += fx.weak;
       if (fx.vuln) e.vuln += fx.vuln;
-      if (fx.poison) e.poison += fx.poison + relicMod(b, 'poisonBonus');
-      if (fx.burn) { e.burn += fx.burn + relicMod(b, 'burnBonus'); e.burnTurns = Math.max(e.burnTurns, 2); }
+      if (fx.poison) { const amt = Math.round((fx.poison + relicMod(b, 'poisonBonus')) * es); if (amt > 0) e.poison += amt; }
+      if (fx.burn) { const amt = Math.round((fx.burn + relicMod(b, 'burnBonus')) * es); if (amt > 0) { e.burn += amt; e.burnTurns = Math.max(e.burnTurns, 2); } }
       if (fx.stun) e.stun += fx.stun;
     }
     if (fx.cleanse) { b.player.weak = 0; b.player.vuln = 0; }
@@ -702,8 +760,32 @@
     }
 
     checkBattleEnd(b);
+    postureHooks(b, cost);
     afterPlay(b, idx, card);
     return { ok: true };
+  }
+
+  /* Enemy postures react to HOW you play, not what you play. */
+  function postureHooks(b, cost) {
+    if (b.over) return;
+    // ink-drinker: a card that cost nothing is free ink — it drinks
+    if (cost === 0) {
+      for (const e of alive(b)) {
+        if (e.posture !== 'inkdrinker') continue;
+        const amt = Math.round(4 * e.dmgMult);
+        e.hp = Math.min(e.maxHp, e.hp + amt);
+        emit(b, { type: 'inkdrink', idx: b.enemies.indexOf(e), amount: amt });
+      }
+    }
+    // retaliation: every card beyond your 2nd each turn draws a counterblow
+    if (b._cardsThisTurn > 2) {
+      for (const e of alive(b)) {
+        if (e.posture !== 'retaliation') continue;
+        emit(b, { type: 'retaliate', idx: b.enemies.indexOf(e), name: e.name });
+        damagePlayer(b, Math.max(2, Math.round(3 * e.dmgMult)), 'retaliation');
+        if (b.over) break;
+      }
+    }
   }
 
   function afterPlay(b, idx, card) {
@@ -714,7 +796,8 @@
 
   function cardView(c) {
     return { inst: c.inst, id: c.id, name: c.name, rarity: c.rarity, cost: c.cost, fx: c.fx,
-             upgraded: c.upgraded, desc: CardData.describeFx(c.fx), flavor: c.flavor, token: c.token };
+             upgraded: c.upgraded, desc: CardData.describeFx(c.fx), flavor: c.flavor, token: c.token,
+             sharpen: c.sharpen || 0, inscribed: c.inscribed || null };
   }
 
   /* ---------- turn structure ---------- */
@@ -744,6 +827,11 @@
       emit(b, { type: 'streakBroken' });
     }
     b._correctThisTurn = false;
+    b._cardsThisTurn = 0;
+    b._lastCardType = null;
+    for (const e of b.enemies) e._parried = false;
+    // hold-to-sharpen: cards kept in hand hone their edge (+1/turn, cap 3)
+    if (b.turn > 1) for (const c of b.hand) c.sharpen = Math.min(3, (c.sharpen || 0) + 1);
     if (b.condition && b.condition.freeGuessPerTurn) b.player.freeGuesses += b.condition.freeGuessPerTurn;
     const gain = b.cls.freeInsight + b.player.insightRune + relicMod(b, 'insightPerTurn');
     if (gain) { gainInsight(b, gain); emit(b, { type: 'insight', amount: gain, free: true }); }
@@ -879,8 +967,35 @@
     if (e.blind > 0) e.blind--;
   }
 
+  function discardCard(b, inst) {
+    const idx = b.hand.findIndex(c => c.inst === inst);
+    if (idx < 0) return false;
+    const c = b.hand.splice(idx, 1)[0];
+    b.discard.push(c);
+    emit(b, { type: 'discarded', card: cardView(c) });
+    return true;
+  }
+
+  // Fallback for when the UI/sim hasn't already trimmed the hand: shed the
+  // cheapest, least-honed cards first.
+  function enforceKeepLimit(b) {
+    while (b.hand.length > KEEP_LIMIT) {
+      let worst = b.hand[0];
+      for (const c of b.hand) {
+        const v = c.cost * 2 + (c.sharpen || 0) - (c.fx.exhaust ? 1 : 0);
+        const wv = worst.cost * 2 + (worst.sharpen || 0) - (worst.fx.exhaust ? 1 : 0);
+        if (v < wv) worst = c;
+      }
+      discardCard(b, worst.inst);
+    }
+  }
+
   function endTurn(b) {
     if (b.over) return;
+    enforceKeepLimit(b);
+    // unspent energy crystallizes into insight
+    const spare = Math.min(b.player.energy, b.insightCap - b.player.insight);
+    if (spare > 0) { gainInsight(b, spare); emit(b, { type: 'energyConverted', amount: spare }); }
     emit(b, { type: 'turnEnd', turn: b.turn });
     for (const e of b.enemies) {
       if (b.over) break;
@@ -1017,9 +1132,10 @@
 
   return {
     makeRng, pick, shuffle,
-    HAND_CAP, BASE_ENERGY, INSIGHT_CAP, FIRST_GUESS_MULT, POWER_MULT, ATTUNE_TIERS,
+    HAND_CAP, KEEP_LIMIT, BASE_ENERGY, INSIGHT_CAP, FIRST_GUESS_MULT, POWER_MULT, ATTUNE_TIERS,
     makeCard, cardView, createBattle, startPlayerTurn, endTurn,
-    playCard, canAfford, effectiveCost, guess, canGuess, changeWordLength, serveWord,
+    playCard, canAfford, effectiveCost, discardCard, guess, canGuess, changeWordLength, serveWord,
+    elemRelation, elemScale,
     scry, canScry, setTarget, targetEnemy, alive,
     enemyIntent, describeIntent, drainEvents, castSpell,
     exportWord, consistentLearned, speakForbidden,

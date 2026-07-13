@@ -62,6 +62,18 @@
       unlockText: 'Win with the Warmage to unlock',
     },
     {
+      id: 'elementalist',
+      name: 'The Elementalist',
+      icon: '🜁',
+      tagline: 'Attuned. Elemental cards & spells +30%; reads every foe’s nature.',
+      desc: 'Speaks in weather. Fire for the orchard, frost for the forge — the right element at the right throat.',
+      hp: 60, freeInsight: 1, draw: 3,
+      elemMult: 1.3,
+      deck: ['firebolt', 'firebolt', 'frostbolt', 'frostbolt', 'venombolt', 'venombolt', 'stormbolt', 'stormbolt', 'focus'],
+      unlock: { kind: 'bestDiff', d: 1 },
+      unlockText: 'Win on Adept difficulty to unlock',
+    },
+    {
       id: 'archivist',
       name: 'The Archivist',
       icon: '📜',
@@ -112,6 +124,7 @@
       case 'allClassWins': return cls.unlock.ids.every(id => (meta.classWins || {})[id]);
       case 'powers': return (meta.discoveredPower || []).length >= cls.unlock.n;
       case 'classWin': return !!(meta.classWins || {})[cls.unlock.id];
+      case 'bestDiff': return (meta.bestDifficultyWin ?? -1) >= cls.unlock.d;
       default: return false;
     }
   }

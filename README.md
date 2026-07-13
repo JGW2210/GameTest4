@@ -16,9 +16,23 @@ Desktop and portrait/mobile layouts included.
 - **The tome.** The whole game is viewed through a magic tome — pages flip as you move
   between the map, battles, the forge and your grimoire. Original SVG "illuminated
   bestiary" art for every foe; a fully synthesized WebAudio soundscape (no asset files).
-- **Battles.** Each turn you get **3⚡ energy** and draw cards (class-dependent) into a
-  hand of up to 8. Cards cost ⚡ and attack, ward, buff, debuff — and most grant
-  **💡 insight**. Some encounters field **packs of foes** — click a foe to aim.
+- **Battles.** Each turn you get **3⚡ energy** and draw cards (class-dependent; the
+  opening hand draws 2 extra) into a hand of up to 8. Cards cost ⚡ and attack, ward,
+  buff, debuff — and most grant **💡 insight**. Some encounters field **packs of
+  foes** — click a foe to aim.
+- **Every card is a decision.** Unspent ⚡ **crystallizes into 💡** at end of turn, so
+  dumping the hand competes with guessing. The night keeps only **5 pages** — end a
+  turn with more and you choose what to shed — but cards **held across turns hone
+  themselves** (+1 to their primary effect per turn, up to +3). Alternating attack
+  and skill cards strikes a **Flow** (+2 to the next card's effect).
+- **Elements.** Fire 🔥, Frost ❄️, Venom ☠️, Storm ⚡ — many cards and spells carry
+  one, and foes have natures: **weak ×1.5, resistant ×0.5, immune ×0** (immunity
+  silences elemental burns and poisons too). The imps of the Cinder Peaks do not
+  fear fire. Bring frost.
+- **Postures.** Some foes fight back against *how* you play: **Retaliation** 🗡
+  counterstrikes every card beyond your 2nd each turn, **Parry** 🤺 negates the first
+  attack card each turn (lead with something else), **Ink-Drinker** 🩸 heals whenever
+  you play a 0⚡ card.
 - **The mystery word.** Every battle serves a mystery word of your chosen length
   (5–10 runes). Guesses cost insight — and **every correct guess raises the cost of
   further guesses by 1 for the rest of that turn** (resets next turn), so chaining
@@ -73,6 +87,9 @@ Desktop and portrait/mobile layouts included.
 | ✒️ **The Scribe** | +1 insight/turn, draws 3. Balanced. |
 | 🔮 **The Oracle** | +2 insight/turn, draws only 2. |
 | ⚔️ **The Warmage** | No free insight, stronger base cards, draws 3. |
+| 🔔 **The Echoist** | 60% resonance, insight caps at 6. Unlocked by discovering 2 Words of Power. |
+| 🗡️ **The Inkblade** | Every spell cast sharpens attack cards +2 this battle. Unlocked by winning with the Warmage. |
+| 🜁 **The Elementalist** | Elemental cards & spells ×1.3; starts with all four bolts. Unlocked by winning on Adept. |
 | 📜 **The Archivist** | +5 insight/turn, draws 1 (always a Cast Tome), casts learned spells at a discount and ×1.4. Unlocked by winning with all other classes. |
 
 ## The run
@@ -87,7 +104,7 @@ encounters** (10 choice events — cursed lexicons, ink-imp wagers, bound djinn�
 world boss. The **Arcane Forge** is always reachable from the map: upgrade cards (×1.5
 effects) or unbind them.
 
-- **137 cards** across common (65%) / uncommon (25%) / rare (8%) / legendary (2%),
+- **144 cards** across common (65%) / uncommon (25%) / rare (8%) / legendary (2%),
   including energy-ramp cards (Leyline Binding, Grand Conduit, Aeon Engine) and 4–5⚡
   endgame bombs (The Omnilex, PENULTIMA). 17 cards are **unlockable** via achievements.
 - **AETHERIA** — the red ultimate rarity. Eight raw-power cards (Aetheric Lance,
@@ -100,7 +117,9 @@ effects) or unbind them.
 - **Prepared Sigils** — slot up to 3 learned words before battle: +20% resonance and
   a revealed rune when served.
 - **Word Inscription** — at the forge, permanently bind a learned word onto a card;
-  it carries 40% of the spell forever. Your grimoire is crafting material.
+  it carries 40% of the spell forever. Your grimoire is crafting material. During a
+  battle whose **resonant hour matches the inscribed word's school, the card costs
+  1⚡ less** — an inscribed deck bends whole battles around itself.
 - **Daily Challenge** — a date-seeded run (same class, seed and difficulty for
   everyone that day) with a shareable emoji result.
 - **The Chronicle** — a stats page in the tome: wins, streak records, guess
@@ -125,15 +144,16 @@ in dying runs power your future runs.**
 
 Tuned by simulation: `tools/simulate.js` plays *complete runs* headlessly on the
 **exact engine + data the game ships** (`js/engine.js` is dual-environment), with
-novice/adept/veteran cognition models for the word-guessing. Final targets
-(150–200 runs/config, v2):
+novice/adept/veteran cognition models for the word-guessing — and a v4-aware card
+policy (elemental targeting, posture counterplay, flow ordering, energy conversion).
+Final targets (300 runs/config, v4):
 
 | Scenario | Win rate |
 |---|---:|
 | Fresh grimoire, first runs (Novice) | ~1% even for a *perfectly disciplined* sim player |
-| Deep grimoire (140 words, Novice) | 10–22% generic decks · **~58% tome-synergy (Archivist)** |
-| Complete 180-word grimoire (Novice) | ~28% |
-| Higher difficulties | Adept ~4% / Master ~3% / Archmage ~1% for generic decks (Aetheria cards keep them off zero); synergy builds dominate — Archivist reaches ~33% on Archmage |
+| Deep grimoire (140 words, Novice) | 10–18% generic decks · **~37% tome-synergy (Archivist)** |
+| Complete 180-word grimoire (Novice) | ~25% |
+| Higher difficulties | Adept/Master/Archmage 1–2% for generic decks (Aetheria cards keep them off zero); synergy builds dominate — Archivist reaches ~25% on Archmage |
 
 ```bash
 node tools/validate.js     # word pool integrity
@@ -147,11 +167,11 @@ index.html          the tome
 css/tome.css        parchment, page-flips, cards, tiles, portrait layout
 js/engine.js        pure game logic (browser + Node)
 js/data/words.js    180 words, schools, signature spells, Words of Power
-js/data/cards.js    128-card pool, energy costs, rarities, unlocks
+js/data/cards.js    144-card pool, energy costs, elements, rarities, unlocks
 js/data/relics.js   24 passive artifacts
 js/data/events.js   10 choice encounters
 js/data/classes.js  classes & difficulties
-js/data/enemies.js  9 worlds of foes (5 tiers + alternates + secret), scaling knobs
+js/data/enemies.js  9 worlds of foes (5 tiers + alternates + secret), natures & postures, scaling
 js/data/arcana.js   forbidden words, page conditions, murmurs
 js/main.js          screens, battle UI, map, forge, grimoire, daily
 js/bestiary.js      SVG illuminated bestiary (33 foes, crests, glyphs)

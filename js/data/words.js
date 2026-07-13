@@ -239,7 +239,25 @@
     MYSTAGOGUS:{ fx: { freeGuess: 3, scryFree: 2, insight: 3 },   note: 'the initiator of initiates' },
   };
 
-  // Build the full spell table: SPELLS[word] = {word, len, arch, school, name, icon, fx, power, sig}
+  /* ---- Elements: fire / frost / venom / storm ----
+   * Latin roots decide first; school archetype is the fallback. Foes carry
+   * affinities (weakTo x1.5, resist x0.5, immune x0). ---- */
+  const ELEMENTS = {
+    fire:  { name: 'Fire',  icon: '🔥' },
+    frost: { name: 'Frost', icon: '❄️' },
+    venom: { name: 'Venom', icon: '☠️' },
+    storm: { name: 'Storm', icon: '⚡' },
+  };
+  function elementForWord(word, school) {
+    if (/GLAC|GEL|NIV|FRIG/.test(word)) return 'frost';
+    if (/IGN|FLAMM|CINER|INCEND|PYR|CONFLAGR/.test(word)) return 'fire';
+    if (/VENEN|SERP|VIRID|TOX|VORAX/.test(word)) return 'venom';
+    if (/FULG|TONITR|FULMIN|TURB|TEMPEST|VENT/.test(word)) return 'storm';
+    const bySchool = { ignium: 'fire', pestis: 'venom', fulmen: 'storm' };
+    return bySchool[school] || null;
+  }
+
+  // Build the full spell table: SPELLS[word] = {word, len, arch, school, name, icon, fx, power, sig, elem}
   const SPELLS = {};
   for (const lenKey of Object.keys(POOLS)) {
     const len = Number(lenKey);
@@ -255,6 +273,7 @@
         icon: ARCHETYPES[arch].icon,
         fx,
         power: WORDS_OF_POWER[len] === word,
+        elem: elementForWord(word, SCHOOL_OF_ARCH[arch]),
         sig: !!sig,
         note: sig ? sig.note : null,
         desc: describeEffect(fx),
@@ -280,5 +299,5 @@
     return res;
   }
 
-  return { POOLS, SPELLS, WORDS_OF_POWER, ARCHETYPES, SCHOOLS, SCHOOL_OF_ARCH, SIGNATURES, judgeGuess, describeEffect };
+  return { POOLS, SPELLS, WORDS_OF_POWER, ARCHETYPES, SCHOOLS, SCHOOL_OF_ARCH, SIGNATURES, ELEMENTS, elementForWord, judgeGuess, describeEffect };
 });

@@ -95,8 +95,11 @@ function cardScore(c, b) {
   const foes = Engine.alive(b).length;
   const intent = tgt ? Engine.enemyIntent(b, tgt) : { kind: 'attack', n: 0 };
   const aoeMult = fx.aoe ? Math.max(1, foes * 0.85) : 1;
+  // elemental matchup vs the current target (weak x1.5 / resist x0.5 / immune x0)
+  const es = fx.elem && tgt ? Engine.elemScale(b, tgt, fx.elem) : 1;
+  const isAttack = !!(fx.dmg || fx.dmgPerLearned || fx.dmgPerInsight || fx.dmgFromBlock || fx.dmgPerAttuned);
   let s = 0;
-  s += (fx.dmg || 0) * (fx.hits || 1) * aoeMult;
+  s += (fx.dmg || 0) * (fx.hits || 1) * aoeMult * es;
   s += (fx.dmgPerLearned || 0) * b.meta.learnedWords.size;
   s += (fx.dmgPerInsight || 0) * b.player.insight * 0.8;
   s += (fx.dmgPerAttuned || 0) * b.lengthsCast.length;
@@ -115,13 +118,20 @@ function cardScore(c, b) {
   s += (fx.heal || 0) * (b.player.hp < b.player.maxHp * 0.6 ? 1.2 : 0.3);
   s += (fx.str || 0) * 4;
   s += ((fx.weak || 0) + (fx.vuln || 0)) * 3 * aoeMult;
-  s += ((fx.poison || 0) * 1.6 + (fx.burn || 0) * 1.4) * aoeMult;
+  s += ((fx.poison || 0) * 1.6 + (fx.burn || 0) * 1.4) * aoeMult * (fx.elem ? es : 1);
   if (fx.stun) s += 12 * aoeMult;
   if (fx.castRandom) s += 12;
   s += (fx.echo || 0) * 0.06 + (fx.twincast ? 8 : 0);
   s += (fx.goldGain || 0) * 0.3;
   s -= (fx.selfDmg || 0) * (b.player.hp < 15 ? 6 : 1.2);
   if (fx.castTome) s += 1;
+  // postures: a fresh parry eats attack cards; ink-drinkers feed on 0-cost plays
+  if (isAttack && tgt && tgt.posture === 'parry' && !tgt._parried && !fx.aoe) s *= 0.4;
+  if (Engine.effectiveCost(b, c) === 0 && Engine.alive(b).some(e => e.posture === 'inkdrinker')) s -= 6;
+  // flow: alternating attack/skill is worth +2 on the primary effect
+  const kind = isAttack ? 'attack' : 'skill';
+  if (b._lastCardType && b._lastCardType !== kind) s += 2;
+  s += (c.sharpen || 0);
   return s;
 }
 
@@ -166,25 +176,33 @@ function playTurn(b, skill, rng) {
     const lowest = foes.reduce((a, z) => (z.hp < a.hp ? z : a));
     Engine.setTarget(b, b.enemies.indexOf(lowest));
   }
-  // play cards greedily by value-per-energy while affordable
+  // play cards by value-per-energy — but not thoughtlessly: unspent energy
+  // becomes insight, retaliators punish long turns, and held cards sharpen.
   let guard = 0;
+  const retaliator = Engine.alive(b).some(e => e.posture === 'retaliation');
   while (!b.over && guard++ < 40) {
     const affordable = b.hand.filter(c => Engine.canAfford(b, c));
     if (!affordable.length) break;
     const ranked = affordable.slice().sort((a, z) =>
-      (cardScore(z, b) / Math.max(0.5, z.cost)) - (cardScore(a, b) / Math.max(0.5, a.cost)));
+      (cardScore(z, b) / Math.max(0.5, Engine.effectiveCost(b, z))) -
+      (cardScore(a, b) / Math.max(0.5, Engine.effectiveCost(b, a))));
     const card = ranked[0];
+    // value of NOT playing: each unspent energy converts to insight at end of turn
+    const convVal = b.player.insight < b.insightCap ? 2.6 : 0;
+    // a retaliator taxes every card beyond the 2nd
+    const retaliateTax = retaliator && b._cardsThisTurn >= 2 ? 5 : 0;
     if (card.fx.castTome) {
       const w = bestTomeWord(b, card.fx);
       if (w) { Engine.playCard(b, card.inst, { tomeWord: w }); continue; }
       const rest = ranked.slice(1);
       if (!rest.length) break;
-      if (cardScore(rest[0], b) <= 0.5) break;
+      if (cardScore(rest[0], b) <= Math.max(0.5, Engine.effectiveCost(b, rest[0]) * convVal + retaliateTax)) break;
       const r = Engine.playCard(b, rest[0].inst);
       if (!r.ok) break;
       continue;
     }
-    if (cardScore(card, b) <= 0.5 && b.hand.length < Engine.HAND_CAP) break;
+    const floor = Math.max(0.5, Engine.effectiveCost(b, card) * convVal + retaliateTax);
+    if (cardScore(card, b) <= floor && b.hand.length <= Engine.KEEP_LIMIT + 1) break;
     const r = Engine.playCard(b, card.inst);
     if (!r.ok) break;
   }
@@ -397,6 +415,7 @@ function rewardScore(cardDef, state) {
   s += (fx.heal || 0) * 0.5 + (fx.freeGuess || 0) * 4;
   s -= (cardDef.cost || 0) * 1.5;
   if (cardDef.rarity === 'aetheria') s += 20; // raw power is never a dead pick
+  if (fx.elem && state.cls.elemMult) s += 3;  // elementalist favors its own weather
   return s;
 }
 

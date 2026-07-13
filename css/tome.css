@@ -451,6 +451,16 @@ button.small-btn { padding: 4px 10px; font-size: 12.5px; }
 .foe-box .intent { font-size: 12px; padding: 1px 9px; margin-top: 3px; }
 .foe-box .statuses { min-height: 16px; margin-top: 2px; }
 .foe-box .status-chip { font-size: 10px; padding: 0 6px; }
+.nature-chip { font-size: 10px; padding: 0 6px; border-radius: 8px;
+  background: rgba(58,44,26,0.12); border: 1px solid rgba(58,44,26,0.25);
+  display: inline-block; margin: 1px 2px; white-space: nowrap; cursor: help; }
+.nature-chip.weak   { border-color: rgba(201,162,39,0.65); background: rgba(201,162,39,0.16); }
+.nature-chip.resist { border-color: rgba(90,110,140,0.5);  background: rgba(90,110,140,0.12); }
+.nature-chip.immune { border-color: rgba(70,70,70,0.55);   background: rgba(70,70,70,0.14); }
+.nature-chip.posture { border-color: rgba(123,79,216,0.45); background: rgba(123,79,216,0.10); }
+.nature-chip.posture.ready { border-color: rgba(123,79,216,0.85); background: rgba(123,79,216,0.22);
+  animation: posture-pulse 1.6s ease-in-out infinite; }
+@keyframes posture-pulse { 0%,100% { box-shadow: 0 0 0 rgba(123,79,216,0); } 50% { box-shadow: 0 0 8px rgba(123,79,216,0.5); } }
 
 /* energy & scry */
 .orb-row { display: flex; gap: 8px; align-items: center; }
@@ -627,3 +637,17 @@ button.small-btn { padding: 4px 10px; font-size: 12.5px; }
   .world-card { width: 100%; max-width: 300px; }
   .cand-chip { padding: 6px 14px; }
 }
+
+
+/* ---- v4: economy & counterplay ---- */
+.card .ccost.discounted { color: #4fd88a; text-shadow: 0 0 8px rgba(79,216,138,0.6); }
+.card .csharp { position: absolute; top: 24px; right: 4px; font-size: 10.5px; color: #d8e4f0;
+  background: rgba(40,52,66,0.75); border: 1px solid rgba(160,190,220,0.4);
+  padding: 0 5px; border-radius: 8px; pointer-events: none; }
+.card.flow-ready { box-shadow: 0 0 10px rgba(110,193,255,0.35), 0 4px 14px rgba(0,0,0,0.35); }
+.card.flow-ready::after { content: '🌊'; position: absolute; bottom: 4px; right: 5px;
+  font-size: 11px; opacity: 0.75; pointer-events: none; }
+.card.shedding { filter: sepia(0.4) brightness(0.9); cursor: grab; }
+.card.shedding:hover { outline: 2px dashed rgba(162,53,44,0.75); transform: translateY(-10px) rotate(var(--fan-r, 0) * 1deg); }
+#end-turn.shed-mode { background: linear-gradient(180deg, #5a3220, #3a2014); border-color: #a2352c;
+  animation: posture-pulse 1.4s ease-in-out infinite; }

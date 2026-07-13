@@ -790,6 +790,23 @@
     $endTurn.onclick = onEndTurn;
   }
 
+  const ELEM_ICONS = { fire: '🔥', frost: '❄️', venom: '☠️', storm: '⚡' };
+  function natureChips(e) {
+    const chips = [];
+    const a = e.affinity;
+    if (a) {
+      if (a.weakTo) chips.push(`<span class="nature-chip weak" title="Weak to ${a.weakTo} — takes ×1.5 from it">${ELEM_ICONS[a.weakTo]} weak</span>`);
+      if (a.resist) chips.push(`<span class="nature-chip resist" title="Resists ${a.resist} — takes ×0.5 from it">${ELEM_ICONS[a.resist]} resist</span>`);
+      if (a.immune) chips.push(`<span class="nature-chip immune" title="Immune to ${a.immune} — takes nothing from it">${ELEM_ICONS[a.immune]} immune</span>`);
+    }
+    if (e.posture) {
+      const p = EnemyData.POSTURES[e.posture];
+      const ready = e.posture === 'parry' && !e._parried;
+      chips.push(`<span class="nature-chip posture${ready ? ' ready' : ''}" title="${p.desc}">${p.icon} ${e.posture}${e.posture === 'parry' ? (ready ? ' ready' : ' spent') : ''}</span>`);
+    }
+    return chips.join('');
+  }
+
   function statusChips(unit, isPlayer) {
     const chips = [];
     if (unit.block) chips.push(`🛡 ${unit.block}`);
@@ -831,7 +848,7 @@
           <div class="hpbar"><div class="fill" style="width:${100 * e.hp / e.maxHp}%"></div>
             <div class="txt">${e.hp} / ${e.maxHp}</div></div>
           ${e.hp > 0 ? `<div class="intent" title="This foe's intent">${(m => m.icon + ' ' + m.text)(Engine.describeIntent(b, e))}</div>` : '<div class="intent">✝ felled</div>'}
-          <div class="statuses">${statusChips(e, false)}</div>
+          <div class="statuses">${e.hp > 0 ? natureChips(e) : ''}${statusChips(e, false)}</div>
         </div>`).join('')}
       </div>
       ${b.enemies.length > 1 ? '<div class="small center" style="opacity:0.7">Click a foe to aim your strikes ⌖</div>' : ''}
@@ -1172,30 +1189,45 @@
   }
 
   /* ---------- hand & cards ---------- */
-  function renderCardEl(view, affordable) {
+  function renderCardEl(view, affordable, showCost) {
     const RAR_ICON = { common: '◦', uncommon: '◆', rare: '★', legendary: '👑', aetheria: '🜂' };
+    const cost = showCost != null ? showCost : view.cost;
+    const discounted = view.cost != null && cost < view.cost;
     const c = el('div', `card rar-${view.rarity}` + (view.upgraded ? ' upgraded' : '') + (view.token ? ' token' : '')
       + (affordable === false ? ' unaffordable' : ''), `
-      <div class="ccost">${view.cost != null ? view.cost : ''}</div>
+      <div class="ccost${discounted ? ' discounted' : ''}" ${discounted ? 'title="Resonant hour — its inscribed school is favored (−1⚡)"' : ''}>${cost != null ? cost : ''}</div>
       <div class="crar">${RAR_ICON[view.rarity]}</div>
+      ${view.sharpen ? `<div class="csharp" title="Honed by patience — +${view.sharpen} to its primary effect (held ${view.sharpen} turn${view.sharpen > 1 ? 's' : ''})">🗡+${view.sharpen}</div>` : ''}
       <div class="cname">${view.name}</div>
       <div class="cdesc">${view.desc}</div>
       <div class="cflavor">${view.flavor || ''}</div>`);
     return c;
   }
 
+  function cardKind(fx) {
+    return (fx.dmg || fx.dmgPerLearned || fx.dmgPerInsight || fx.dmgFromBlock || fx.dmgPerAttuned) ? 'attack' : 'skill';
+  }
+
   function renderHand() {
     $hand.innerHTML = '';
     if (!battle || battle.over) return;
-    const n = battle.hand.length;
-    battle.hand.forEach((card, i) => {
+    const b = battle;
+    const n = b.hand.length;
+    b.hand.forEach((card, i) => {
       const view = Engine.cardView(card);
-      const afford = Engine.canAfford(battle, card);
-      const c = renderCardEl(view, afford);
+      const afford = Engine.canAfford(b, card);
+      const c = renderCardEl(view, afford, Engine.effectiveCost(b, card));
+      if (!discardMode && b._lastCardType && cardKind(card.fx) !== b._lastCardType) {
+        c.classList.add('flow-ready');
+        c.title = 'Flow — a different kind of card than your last: +2 to its primary effect';
+      }
+      if (discardMode) c.classList.add('shedding');
       const mid = (n - 1) / 2;
       c.style.setProperty('--fan-r', (i - mid) * 4);
       c.style.setProperty('--fan-y', Math.abs(i - mid) * 7);
-      if (COARSE_POINTER) {
+      if (discardMode) {
+        c.onclick = () => onShedCard(card);
+      } else if (COARSE_POINTER) {
         // touch: first tap raises the card to read it, second tap plays it
         c.onclick = () => {
           if (!c.classList.contains('inspect')) {
@@ -1278,9 +1310,41 @@
     m.p.appendChild(cancel);
   }
 
+  let discardMode = false;
+  function setDiscardMode(on) {
+    discardMode = on;
+    $endTurn.innerHTML = on ? 'Keep the rest ✋' : 'End Turn ⌛';
+    $endTurn.classList.toggle('shed-mode', on);
+    renderHand();
+  }
+
+  function onShedCard(card) {
+    const b = battle;
+    if (!b || b.over) return;
+    Engine.discardCard(b, card.inst);
+    Sfx.card();
+    processEvents(Engine.drainEvents(b));
+    if (b.hand.length <= Engine.KEEP_LIMIT) { setDiscardMode(false); doEndTurn(); return; }
+    toast(`🗞 Shed ${b.hand.length - Engine.KEEP_LIMIT} more`, 1400);
+    renderHand();
+  }
+
   function onEndTurn() {
     const b = battle;
     if (!b || b.over || modalOpen) return;
+    if (discardMode) { setDiscardMode(false); doEndTurn(); return; } // "keep the rest": engine sheds for you
+    if (b.hand.length > Engine.KEEP_LIMIT) {
+      setDiscardMode(true);
+      toast(`🗞 The night keeps only ${Engine.KEEP_LIMIT} pages — tap ${b.hand.length - Engine.KEEP_LIMIT} card${b.hand.length - Engine.KEEP_LIMIT > 1 ? 's' : ''} to shed (or press again to let the tome choose)`, 4200);
+      Sfx.flip();
+      return;
+    }
+    doEndTurn();
+  }
+
+  function doEndTurn() {
+    const b = battle;
+    if (!b || b.over) return;
     Sfx.flip();
     Engine.endTurn(b);
     currentGuess = '';
@@ -1368,6 +1432,42 @@
         case 'streakBroken':
           later(() => log('🕯 The streak gutters out — a turn passed without a spoken word.'));
           break;
+        case 'energyConverted':
+          later(() => {
+            log(`⚗ Unspent vigor settles into thought — <b>+${ev.amount} 💡</b>.`);
+            const e1 = eorb(), e2 = orb();
+            FX.beam(e1.x, e1.y, e2.x, e2.y, { color: '#c9a227' });
+            floatText(e2.x, e2.y - 14, `+${ev.amount} 💡`, '#e8d9b0');
+          }, 200);
+          break;
+        case 'flow':
+          later(() => log('🌊 <b>Flow</b> — the rhythm of ink and steel (+2).'));
+          break;
+        case 'parried':
+          later(() => {
+            const p = foeCenter(ev.idx);
+            floatText(p.x, p.y - 24, '⚔ PARRIED', '#cdd7e2');
+            log(`⚔ <b>${ev.name}</b> turns your attack aside — its parry is spent.`);
+            Sfx.block();
+          }, 200);
+          break;
+        case 'retaliate':
+          later(() => {
+            const p = foeCenter(ev.idx);
+            floatText(p.x, p.y - 24, '🗡 riposte', '#ff8a5c');
+            log(`🗡 <b>${ev.name}</b> punishes your flurry — a counterblow lands.`);
+          }, 200);
+          break;
+        case 'inkdrink':
+          later(() => {
+            const p = foeCenter(ev.idx);
+            floatText(p.x, p.y - 24, `+${ev.amount} 🩸`, '#7fbf5f');
+            log(`🩸 The foe drinks your free ink and mends <b>${ev.amount}</b>.`);
+          }, 200);
+          break;
+        case 'discarded':
+          later(() => log(`🗞 <i>${ev.card.name}</i> slips back into the pile.`));
+          break;
         case 'wordCarried':
           later(() => {
             log(`📖 The unsolved ${ev.len}-rune word followed you here — your deduction stands.`);
@@ -1390,7 +1490,11 @@
           later(() => {
             const p = foeCenter(ev.idx);
             FX.slash(p.x, p.y, { color: ev.tag === 'spell' ? '#a887ff' : '#fff' });
-            floatText(p.x + (Math.random() * 40 - 20), p.y - 20, '-' + ev.amount, '#ff8a5c');
+            let txt = '-' + ev.amount, color = '#ff8a5c';
+            if (ev.elemRel === 'immune') { txt = `${ELEM_ICONS[ev.elem]} immune`; color = '#9a917f'; }
+            else if (ev.elemRel === 'weak') { txt += ` ${ELEM_ICONS[ev.elem]}!`; color = '#ffd75c'; }
+            else if (ev.elemRel === 'resist') { txt += ` ${ELEM_ICONS[ev.elem]}·resist`; color = '#b7ac97'; }
+            floatText(p.x + (Math.random() * 40 - 20), p.y - 20, txt, color);
             Sfx.hit();
             const g = document.getElementById('foe-art-' + ev.idx);
             if (g) { g.classList.remove('hit'); void g.offsetWidth; g.classList.add('hit'); }
