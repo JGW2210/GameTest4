@@ -318,12 +318,14 @@
   }
 
   /* ---------- schools, attunement, spells ---------- */
+  // Attunement is the main non-card trickle of insight, so it stays lean:
+  // 4 total across a battle, and only for weaving 2+ word lengths.
   const ATTUNE_TIERS = {
     2: { insight: 1 },
     3: { energyMax: 1 },
-    4: { insight: 2, energyNow: 1 },
+    4: { insight: 1, energyNow: 1 },
     5: { str: 3 },
-    6: { energyMax: 1, insight: 3 },
+    6: { energyMax: 1, insight: 2 },
   };
 
   function noteAttunement(b, len) {
@@ -349,7 +351,7 @@
       case 'pestis': if (prior && (fx.poison || fx.dmg)) fx._poisonBonus = 3 * prior; break;
       case 'sanguine': if (prior) fx._healBonus = 4 * prior; break;
       case 'umbral': if (prior) fx._durBonus = Math.min(2, prior); break;
-      case 'mentis': if (prior) { gainInsight(b, prior); emit(b, { type: 'insight', amount: prior }); } break;
+      case 'mentis': if (prior) { b.player.scryLeft += 1; emit(b, { type: 'scryPlus', amount: 1 }); } break;
       case 'fulmen': if (prior % 2 === 1) fx._stunBonus = 1; break;
     }
   }

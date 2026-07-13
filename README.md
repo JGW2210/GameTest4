@@ -36,13 +36,20 @@ Desktop and portrait/mobile layouts included.
 - **Attunement.** Weaving *different word lengths* in one battle grants tiered boons —
   insight, might, and **+max ⚡** — plus bonus aurum. Variety pays.
 - **Words of Power.** One secret word per length casts at **×2**. Discover them.
-- **Signature spells.** ~40 notable words carry hand-authored identities (★): IGNIS
+- **Words do what they sound like.** Every word maps to its meaning: IGNIS and FLAMMA
+  burn, GELUM and GLACIA ward with numbing frost, VENTUS and VORTEX tear through every
+  foe, FULGUR strikes like lightning, LUMEN and ORACUL illuminate the mystery word,
+  VENENUM poisons, SANGUIS drinks blood, TERRA shields.
+- **Signature spells.** ~45 notable words carry hand-authored identities (★): IGNIS
   burns every foe, UMBRA blinds, MORTIS executes the dying, OMNIPOTENS swells your
   energy reserves…
-- **Insight carries over between turns** within a battle, but is **capped at 10 and
-  resets every battle** — no cross-battle hoarding. Energy refreshes each turn and
-  its ceiling can be **ramped past 4–5⚡** with attunement, relics, and rare cards for
-  endgame builds.
+- **Insight is scarce.** It flows from cards, your class, relics, and attunement —
+  almost never from spells. **Words shorter than 7 letters never grant insight**, and
+  only a handful of 7L+ knowledge-words (Clarity, Empowerment, Ascension and a few ★)
+  return a small trickle. Insight carries over between turns within a battle, but is
+  **capped at 10 and resets every battle** — no cross-battle hoarding. Energy
+  refreshes each turn and its ceiling can be **ramped past 4–5⚡** with attunement,
+  relics, and rare cards for endgame builds.
 
 ## Word pools
 
@@ -64,7 +71,7 @@ Desktop and portrait/mobile layouts included.
 | ✒️ **The Scribe** | +1 insight/turn, draws 3. Balanced. |
 | 🔮 **The Oracle** | +2 insight/turn, draws only 2. |
 | ⚔️ **The Warmage** | No free insight, stronger base cards, draws 3. |
-| 📜 **The Archivist** | +5 insight/turn, draws 1 (always a Cast Tome), casts learned spells at a discount and ×1.4. Unlocked by winning with all other classes. |
+| 📜 **The Archivist** | +6 insight/turn, draws 1 (always a Cast Tome), casts learned spells at a discount and ×1.4. Unlocked by winning with all other classes. |
 
 ## The run
 
@@ -95,12 +102,12 @@ novice/adept/veteran cognition models for the word-guessing. Final targets
 
 | Scenario | Win rate |
 |---|---:|
-| Fresh grimoire, first runs (Novice) | ~8–15% for a *perfectly disciplined* sim player |
-| 5–7L pools mastered (Novice) | ~40–55% — the first-win milestone |
-| Deep grimoire (140 words, Novice) | ~60–75% |
-| Deep grimoire, Adept | ~45% |
-| Deep grimoire, Master | ~32% |
-| Complete 180-word grimoire, Archmage | ~20% (Archivist: ~46%) |
+| Fresh grimoire, first runs (Novice) | ~6–12% for a *perfectly disciplined* sim player |
+| 5–7L pools mastered (Novice) | ~35–65% — the first-win milestone |
+| Deep grimoire (140 words, Novice) | ~60% (Archivist: ~89%) |
+| Deep grimoire, Adept | ~44% |
+| Deep grimoire, Master | ~23% |
+| Complete 180-word grimoire, Archmage | ~29% (Archivist: ~23%) |
 
 ```bash
 node tools/validate.js     # word pool integrity

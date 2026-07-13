@@ -1175,6 +1175,9 @@
         case 'scry':
           later(() => log(`🔮 Scry: <b>${ev.letter}</b> ${ev.present ? 'dwells within' : 'is absent'}.`));
           break;
+        case 'scryPlus':
+          later(() => log(`🔮 A free scry crystallizes in your mind (+${ev.amount}).`));
+          break;
         case 'enemyHit':
           later(() => {
             const p = foeCenter(ev.idx);
