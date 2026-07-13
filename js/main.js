@@ -740,6 +740,7 @@
     if (isPlayer && unit.twincast) chips.push(`👯 twincast`);
     if (isPlayer && unit.freeGuesses) chips.push(`🗣 free ×${unit.freeGuesses}`);
     if (isPlayer && unit.resonance > 0.351) chips.push(`🔔 resonance ${Math.round(unit.resonance * 100)}%`);
+    if (isPlayer && unit.guessCost > 1) chips.push(`🗣 guesses ${unit.guessCost} 💡`);
     return chips.map(c => `<span class="status-chip">${c}</span>`).join('');
   }
 
@@ -861,7 +862,9 @@
     gb.style.marginTop = '7px';
     const canG = Engine.canGuess(b);
     const btn = el('button', 'arcane small-btn',
-      b.player.freeGuesses > 0 ? '🗣 Speak (free guess)' : '🗣 Speak the Word (1 💡)');
+      b.player.freeGuesses > 0 ? '🗣 Speak (free guess)'
+        : `🗣 Speak the Word (${b.player.guessCost} 💡)${b.player.guessCost > 1 ? ' ⬆' : ''}`);
+    if (b.player.guessCost > 1) btn.title = 'Each correct guess this turn raises the cost of further guesses';
     btn.disabled = !canG || currentGuess.length !== w.len;
     btn.id = 'guess-btn';
     btn.onclick = submitGuess;
@@ -1174,6 +1177,9 @@
           break;
         case 'scry':
           later(() => log(`🔮 Scry: <b>${ev.letter}</b> ${ev.present ? 'dwells within' : 'is absent'}.`));
+          break;
+        case 'guessCostUp':
+          later(() => log(`🗣 The tome demands more — further guesses cost <b>${ev.cost} 💡</b> this turn.`));
           break;
         case 'enemyHit':
           later(() => {

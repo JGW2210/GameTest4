@@ -20,8 +20,11 @@ Desktop and portrait/mobile layouts included.
   hand of up to 8. Cards cost ⚡ and attack, ward, buff, debuff — and most grant
   **💡 insight**. Some encounters field **packs of foes** — click a foe to aim.
 - **The mystery word.** Every battle serves a mystery word of your chosen length
-  (5–10 runes). Each guess costs 1 insight. Green = right rune, right place;
-  yellow = right rune, wrong place; grey = absent.
+  (5–10 runes). Guesses cost insight — and **every correct guess raises the cost of
+  further guesses by 1 for the rest of that turn** (resets next turn), so chaining
+  casts gets expensive fast. Tome-casts, free guesses and resonance bypass the
+  surcharge — building around them is what makes or breaks a run.
+  Green = right rune, right place; yellow = right rune, wrong place; grey = absent.
 - **Scry.** Once per turn, freely ask the tome whether a chosen letter is in the word.
 - **Casting.** Guess the word → its spell casts. **First-guess casts are ×1.5.**
 - **Engraving & resonance.** Correct words are learned *permanently* — across runs.
@@ -95,12 +98,10 @@ novice/adept/veteran cognition models for the word-guessing. Final targets
 
 | Scenario | Win rate |
 |---|---:|
-| Fresh grimoire, first runs (Novice) | ~8–15% for a *perfectly disciplined* sim player |
-| 5–7L pools mastered (Novice) | ~40–55% — the first-win milestone |
-| Deep grimoire (140 words, Novice) | ~60–75% |
-| Deep grimoire, Adept | ~45% |
-| Deep grimoire, Master | ~32% |
-| Complete 180-word grimoire, Archmage | ~20% (Archivist: ~46%) |
+| Fresh grimoire, first runs (Novice) | ~1% even for a *perfectly disciplined* sim player |
+| Deep grimoire (140 words, Novice) | 10–22% generic decks · **~58% tome-synergy (Archivist)** |
+| Complete 180-word grimoire (Novice) | ~28% |
+| Higher difficulties | near-zero for generic decks; synergy builds (tome-casting, resonance, free guesses, energy ramp) are the only way through — Archivist reaches ~21% on Archmage |
 
 ```bash
 node tools/validate.js     # word pool integrity

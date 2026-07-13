@@ -102,6 +102,7 @@
         hp: opts.hp, maxHp: opts.maxHp, block: 0, str: 0, wardBonus: 0, thorns: 0,
         weak: 0, vuln: 0, regen: 0,
         insight: 0, // fresh every battle, capped at INSIGHT_CAP
+        guessCost: 1, // rises by 1 for the rest of the turn after each correct guess
         resonance: 0.35 + RelicData.mod(relics, 'resonance') / 100,
         freeGuesses: RelicData.mod(relics, 'freeGuessPerBattle'),
         energy: 0, maxEnergy,
@@ -447,9 +448,12 @@
     return spell;
   }
 
-  /* ---------- guessing ---------- */
+  /* ---------- guessing ----------
+   * Each guess costs b.player.guessCost insight (free guesses bypass this).
+   * Every CORRECT guess raises the cost by 1 for the rest of the turn —
+   * chaining casts in one turn gets expensive fast. Resets at turn start. */
   function canGuess(b) {
-    return !!b.word && !b.over && (b.player.freeGuesses > 0 || b.player.insight >= 1);
+    return !!b.word && !b.over && (b.player.freeGuesses > 0 || b.player.insight >= b.player.guessCost);
   }
 
   function guess(b, raw) {
@@ -458,7 +462,7 @@
     const g = String(raw || '').toUpperCase().replace(/[^A-Z]/g, '');
     if (g.length !== w.len) return { ok: false, reason: 'length' };
     if (b.player.freeGuesses > 0) b.player.freeGuesses--;
-    else if (b.player.insight >= 1) b.player.insight--;
+    else if (b.player.insight >= b.player.guessCost) b.player.insight -= b.player.guessCost;
     else return { ok: false, reason: 'insight' };
 
     const marks = WordData.judgeGuess(g, w.answer);
@@ -480,6 +484,8 @@
         emit(b, { type: 'wordLearned', word: g });
       }
       if (b.player.refundOnCorrect) gainInsight(b, 1);
+      b.player.guessCost++;
+      emit(b, { type: 'guessCostUp', cost: b.player.guessCost });
       castSpell(b, g, { firstGuess });
       if (!b.over) serveWord(b, b.wordLen);
       rollResonance(b);
@@ -609,6 +615,7 @@
     b.turn++;
     b.player.block = 0;
     b.player.energy = b.player.maxEnergy;
+    b.player.guessCost = 1; // cast-chain surcharge resets each turn
     b.player.scryLeft = 1 + relicMod(b, 'scryPerTurn');
     const gain = b.cls.freeInsight + b.player.insightRune + relicMod(b, 'insightPerTurn');
     if (gain) { gainInsight(b, gain); emit(b, { type: 'insight', amount: gain, free: true }); }

@@ -418,8 +418,11 @@ runConfig('oracle  novice-diff 140 words   veteran', 'oracle', 0, 140, 'veteran'
 runConfig('warmage novice-diff 140 words   veteran', 'warmage', 0, 140, 'veteran', RUNS, DEEP);
 runConfig('archivist novice-diff 140 words veteran', 'archivist', 0, 140, 'veteran', RUNS, DEEP);
 
-console.log('--- Higher difficulties (veteran, deep grimoire) ---');
+console.log('--- ANCHORS: fresh ~1%, full grimoire ~25% (Novice) ---');
 const FULL = { totalWins: 9, bestDifficultyWin: 2, classWins: { scribe: 1, oracle: 1, warmage: 1 } };
+runConfig('scribe  novice-diff 180 words   veteran', 'scribe', 0, 180, 'veteran', RUNS, FULL);
+
+console.log('--- Higher difficulties (veteran, deep grimoire) ---');
 runConfig('scribe  ADEPT   140 words       veteran', 'scribe', 1, 140, 'veteran', RUNS, DEEP);
 runConfig('scribe  MASTER  160 words       veteran', 'scribe', 2, 160, 'veteran', RUNS, FULL);
 runConfig('scribe  ARCHMAGE 180 words      veteran', 'scribe', 3, 180, 'veteran', RUNS, FULL);
