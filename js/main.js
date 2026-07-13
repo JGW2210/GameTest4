@@ -170,6 +170,63 @@
       if (run) flipTo(renderMap); else toast('No expedition to continue');
     };
     right.querySelector('#bt-daily').onclick = startDaily;
+
+    // a keyhole, barely visible, for those who know the word
+    const keyhole = el('div', '', '🗝️');
+    keyhole.id = 'keyhole';
+    keyhole.style.cssText = 'position:absolute;right:6px;bottom:2px;font-size:15px;opacity:0.18;cursor:pointer;transition:opacity 0.3s';
+    keyhole.onmouseenter = () => keyhole.style.opacity = '0.6';
+    keyhole.onmouseleave = () => keyhole.style.opacity = '0.18';
+    keyhole.onclick = whisperModal;
+    $R.appendChild(keyhole);
+  }
+
+  /* Secret entry panel: speaking the maker's word engraves the whole Lexicon
+   * (all 180 grimoire words) — intended for testing. */
+  function whisperModal() {
+    const m = overlayPanel(`<div class="rune-title">🗝️ Whisper to the Tome</div>
+      <p class="small center" style="max-width:380px">The keyhole has no key. The tome listens instead.<br>Speak, and be judged.</p>`);
+    const input = el('input');
+    input.id = 'whisper-input';
+    input.type = 'text';
+    input.maxLength = 20;
+    input.autocomplete = 'off';
+    input.style.cssText = 'display:block;margin:12px auto;padding:9px 14px;font-family:inherit;font-size:18px;' +
+      'letter-spacing:0.2em;text-transform:uppercase;text-align:center;background:rgba(255,250,235,0.6);' +
+      'border:1.5px solid rgba(58,44,26,0.5);border-radius:8px;color:var(--ink);width:280px;outline:none';
+    m.p.appendChild(input);
+    const row = el('div', 'center');
+    const speak = el('button', 'arcane small-btn', '🗣 Whisper');
+    const leave = el('button', 'ghost small-btn', 'Say nothing');
+    leave.style.marginLeft = '8px';
+    row.appendChild(speak); row.appendChild(leave);
+    m.p.appendChild(row);
+
+    const submit = () => {
+      const word = (input.value || '').trim().toUpperCase();
+      if (word === 'WORDSMITH') {
+        const all = [];
+        Object.values(WordData.POOLS).forEach(pool => all.push(...pool));
+        meta.learnedWords = all.slice();
+        SaveSystem.saveMeta(meta);
+        m.close();
+        Sfx.power();
+        FX.confetti();
+        FX.powerNova(window.innerWidth / 2, window.innerHeight / 2);
+        FX.runes(window.innerWidth / 2, window.innerHeight / 3, 'WORDSMITH', { color: '#ffd700', size: 30 });
+        toast('🗝️ <b>The tome recognizes its maker.</b> All 180 words engrave themselves at once.', 4600);
+        renderTitle();
+      } else if (word) {
+        shakeTome();
+        Sfx.wrong();
+        input.value = '';
+        toast('The tome does not know that word. Or refuses to.');
+      }
+    };
+    speak.onclick = submit;
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); e.stopPropagation(); });
+    leave.onclick = m.close;
+    setTimeout(() => input.focus(), 80);
   }
 
   function startDaily() {
