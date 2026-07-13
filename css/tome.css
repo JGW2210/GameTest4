@@ -583,3 +583,47 @@ button.small-btn { padding: 4px 10px; font-size: 12.5px; }
   .reward-cards .card:hover { transform: none; }
   .reward-cards .card.inspect { transform: translateY(-6px) scale(1.1); }
 }
+
+/* ============ V3: candidate chips, streaks, forbidden, worlds, chronicle ============ */
+.cand-strip { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 7px; align-items: center; }
+.cand-chip {
+  font-family: inherit; font-size: 13px; font-weight: bold; letter-spacing: 0.08em;
+  padding: 4px 12px; border-radius: 14px; cursor: pointer;
+  background: rgba(232,222,255,0.65); color: var(--arcane); border: 1.5px solid var(--arcane);
+  box-shadow: 0 2px 6px rgba(123,79,216,0.25); transition: all 0.12s;
+}
+.cand-chip:hover { background: var(--arcane); color: #fff; transform: translateY(-2px); }
+
+.sewn-banner {
+  text-align: center; margin: 8px auto; padding: 8px 14px; max-width: 380px;
+  background: rgba(140,44,34,0.12); border: 1.5px dashed var(--blood); border-radius: 10px;
+  color: var(--blood); font-variant: small-caps; letter-spacing: 0.04em;
+}
+.forbidden-btn { border-color: var(--blood) !important; color: var(--blood) !important; }
+.forbidden-btn:hover { box-shadow: 0 0 12px rgba(140,44,34,0.5) !important; }
+
+.cond-banner {
+  margin: 8px 0; padding: 6px 12px; font-size: 12.5px; border-radius: 8px;
+  background: rgba(123,79,216,0.1); border: 1px solid rgba(123,79,216,0.35);
+}
+
+.world-choice-row { display: flex; gap: 14px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.world-card {
+  width: 220px; padding: 16px 14px; text-align: center; cursor: pointer;
+  border: 2px solid rgba(58,44,26,0.4); border-radius: 12px;
+  background: rgba(255,250,235,0.5); transition: all 0.15s;
+}
+.world-card:hover { transform: translateY(-4px); box-shadow: 0 8px 20px rgba(58,44,26,0.35); border-color: var(--arcane); }
+.world-card.risky { border-color: rgba(140,44,34,0.55); }
+.world-card.risky:hover { border-color: var(--blood); box-shadow: 0 8px 20px rgba(140,44,34,0.35); }
+.world-card .wc-icon { font-size: 40px; margin-bottom: 6px; }
+
+.chron-grid { display: grid; grid-template-columns: auto 1fr; gap: 5px 16px; margin-top: 8px; font-size: 13.5px; }
+.dist-row { display: flex; align-items: center; gap: 7px; }
+.dist-row .dist-bar { height: 9px; background: linear-gradient(90deg, var(--arcane), #a887ff); border-radius: 5px; min-width: 3px; }
+.dist-row span:first-child { width: 14px; text-align: right; }
+
+@media (max-aspect-ratio: 9/10), (max-width: 700px) {
+  .world-card { width: 100%; max-width: 300px; }
+  .cand-chip { padding: 6px 14px; }
+}

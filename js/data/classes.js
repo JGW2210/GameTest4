@@ -38,6 +38,30 @@
       unlock: null,
     },
     {
+      id: 'echoist',
+      name: 'The Echoist',
+      icon: '🔔',
+      tagline: 'Resonant. 60% engraving resonance, but insight caps at 6.',
+      desc: 'Speaks rarely; the engravings answer anyway. Weak at brute-force guessing — devastating once the grimoire hums.',
+      hp: 58, freeInsight: 1, draw: 3,
+      resonanceBase: 0.6, insightCap: 6,
+      deck: ['bolt', 'bolt', 'bolt', 'ward', 'ward', 'ward', 'resochant', 'resochant', 'focus'],
+      unlock: { kind: 'powers', n: 2 },
+      unlockText: 'Discover 2 Words of Power to unlock',
+    },
+    {
+      id: 'inkblade',
+      name: 'The Inkblade',
+      icon: '🗡️',
+      tagline: 'Spellblade. Every spell cast sharpens attack cards by +2 this battle.',
+      desc: 'Writes in wounds. Words and steel feed each other — neither is enough alone.',
+      hp: 66, freeInsight: 1, draw: 3,
+      bladeCharge: 2,
+      deck: ['inkstab', 'inkstab', 'inkstab', 'slash', 'ward', 'ward', 'ward', 'focus', 'focus'],
+      unlock: { kind: 'classWin', id: 'warmage' },
+      unlockText: 'Win with the Warmage to unlock',
+    },
+    {
       id: 'archivist',
       name: 'The Archivist',
       icon: '📜',
@@ -53,7 +77,7 @@
   ];
 
   const DIFFICULTIES = [
-    { id: 0, name: 'Novice',   icon: '🕯️', hpMult: 1.1,  dmgMult: 1.0,  goldMult: 1.0, desc: 'The tome opens gently.', unlock: null },
+    { id: 0, name: 'Novice',   icon: '🕯️', hpMult: 1.22, dmgMult: 1.02, goldMult: 1.0, desc: 'The tome opens gently.', unlock: null },
     { id: 1, name: 'Adept',    icon: '📖', hpMult: 1.38, dmgMult: 1.22, goldMult: 1.35, desc: 'Foes strike harder; aurum flows faster.', unlock: { winsOn: 0 } },
     { id: 2, name: 'Master',   icon: '🔥', hpMult: 1.56, dmgMult: 1.34, goldMult: 1.7, desc: 'The pages resist being turned.', unlock: { winsOn: 1 } },
     { id: 3, name: 'Archmage', icon: '💀', hpMult: 1.95, dmgMult: 1.6,  goldMult: 2.2, desc: 'The tome reads YOU.', unlock: { winsOn: 2 } },
@@ -82,11 +106,14 @@
   function classUnlocked(cls, meta) {
     if (!cls.unlock) return true;
     if (!meta) return false;
-    if (meta.unlockAllClasses || meta.unlockArchivist) return true; // whispered secrets
-    if (cls.unlock.kind === 'allClassWins') {
-      return cls.unlock.ids.every(id => (meta.classWins || {})[id]);
+    if (meta.unlockAllClasses) return true; // whispered secrets
+    if (meta.unlockArchivist && cls.id === 'archivist') return true;
+    switch (cls.unlock.kind) {
+      case 'allClassWins': return cls.unlock.ids.every(id => (meta.classWins || {})[id]);
+      case 'powers': return (meta.discoveredPower || []).length >= cls.unlock.n;
+      case 'classWin': return !!(meta.classWins || {})[cls.unlock.id];
+      default: return false;
     }
-    return false;
   }
 
   function difficultyUnlocked(diff, meta) {

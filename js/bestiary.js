@@ -238,9 +238,194 @@
       <circle cx="56" cy="38" r="2.2" ${F('#8c2c22')}/>
       <path d="M26 82 C40 78 60 78 74 82" ${S('stroke-width="2.6" stroke="#8c2c22"')}/>
       <path d="M22 30 L28 34 M78 56 L72 54 M70 70 L64 66" ${S('stroke-width="2" stroke="#8a6fd0"')}/>`, 'rgba(230,220,245,0.5)'),
+
+    /* ---- Tier 2 ALT: Drowned Orchard ---- */
+    rotfruit: medallion(`
+      <circle cx="50" cy="52" r="17" ${F('#8a4a3a')}/>
+      <path d="M42 44 C46 48 54 48 58 44" ${S('stroke-width="2" stroke="#4a2018"')}/>
+      <circle cx="44" cy="48" r="2.6" ${F('#d8e86a')}/><circle cx="57" cy="50" r="2.2" ${F('#d8e86a')}/>
+      <path d="M50 35 C50 28 54 24 58 22" ${S('stroke-width="3" stroke="#4a6b34"')}/>
+      <path d="M40 62 C44 66 48 64 48 60 M56 64 C58 68 62 66 62 62" ${S('stroke-width="2.4" stroke="#5a7d3e"')}/>`),
+    willowisp: medallion(`
+      <path d="M50 26 C40 36 36 50 40 64 C44 58 48 58 50 62 C52 58 56 58 60 64 C64 50 60 36 50 26 Z" ${F('#9fd0c8')} opacity="0.8"/>
+      <circle cx="46" cy="44" r="2.6" ${F('#2a4a44')}/><circle cx="54" cy="44" r="2.6" ${F('#2a4a44')}/>
+      <path d="M30 40 C26 44 26 50 30 54 M70 40 C74 44 74 50 70 54" ${S('stroke-width="2" stroke="#9fd0c8"')}/>`),
+    bogshade: medallion(`
+      <path d="M32 66 C28 46 36 32 50 32 C64 32 72 46 68 66 C62 60 56 64 54 70 C50 62 44 64 40 70 C38 64 34 62 32 66 Z" ${F('#3e5248')} opacity="0.9"/>
+      <circle cx="44" cy="46" r="3" ${F('#b8e0a0')}/><circle cx="56" cy="46" r="3" ${F('#b8e0a0')}/>
+      <path d="M28 74 C36 70 64 70 72 74" ${S('stroke-width="2.4" stroke="#2a382e"')}/>`),
+    orchardkeeper: medallion(`
+      <circle cx="50" cy="38" r="9" ${F('#d9c49a')}/>
+      <path d="M36 30 H64 L58 22 H42 Z" ${F('#8a6a3a')}/>
+      <path d="M38 74 C36 56 42 48 50 48 C58 48 64 56 62 74 Z" ${F('#5d6b42')}/>
+      <path d="M66 46 V78 M66 52 L74 46" ${S('stroke-width="2.6" stroke="#6e5238"')}/>
+      <path d="M46 37 H48 M52 37 H54" ${S('stroke-width="2"')}/>`),
+    cidergolem: medallion(`
+      <rect x="34" y="34" width="32" height="34" rx="8" ${F('#7a4a28')}/>
+      <path d="M34 44 H66 M34 56 H66" ${S('stroke-width="2.5" stroke="#4a2c14"')}/>
+      <circle cx="44" cy="50" r="3" ${F('#ffd75c')}/><circle cx="56" cy="50" r="3" ${F('#ffd75c')}/>
+      <path d="M42 28 C44 22 56 22 58 28" ${S('stroke-width="3" stroke="#4a2c14"')}/>
+      <path d="M40 72 C44 78 56 78 60 72" ${S('stroke-width="2.5" stroke="#a06a3a" stroke-dasharray="3 3"')}/>`),
+    wormqueen: medallion(`
+      <path d="M28 62 C28 48 38 46 44 52 C48 42 60 42 64 50 C72 48 76 58 70 64 C64 70 56 66 54 60 C50 68 38 70 34 64 C30 64 28 63 28 62 Z" ${F('#b06a7a')}/>
+      <circle cx="60" cy="52" r="3" ${F('#3a1a22')}/>
+      <path d="M40 34 L36 24 M50 32 L50 22 M60 34 L64 24" ${S('stroke-width="2.4" stroke="' + GOLD + '"')}/>
+      <path d="M42 30 H58" ${S('stroke-width="2.4" stroke="' + GOLD + '"')}/>`),
+    grafter: medallion(`
+      <path d="M36 24 L58 56 M64 24 L42 56" ${S('stroke-width="5" stroke="#8a8578"')}/>
+      <circle cx="36" cy="24" r="4" ${F('#5d4a2f')}/><circle cx="64" cy="24" r="4" ${F('#5d4a2f')}/>
+      <path d="M42 56 C36 64 36 72 42 78 M58 56 C64 64 64 72 58 78" ${S('stroke-width="4" stroke="#8a8578"')}/>
+      <path d="M46 64 C48 62 52 62 54 64" ${S('stroke-width="2" stroke="#8c2c22"')}/>
+      <circle cx="50" cy="42" r="3.5" ${F('#8c2c22')}/>`, 'rgba(235,220,210,0.5)'),
+
+    /* ---- Tier 3 ALT: Glass Desert ---- */
+    glasscrab: medallion(`
+      <ellipse cx="50" cy="52" rx="18" ry="12" ${F('#bcd8e0')} opacity="0.85"/>
+      <path d="M36 44 C30 38 28 32 30 26 M64 44 C70 38 72 32 70 26" ${S('stroke-width="3.4" stroke="#8fb4c0"')}/>
+      <circle cx="30" cy="26" r="3.5" ${F('#8fb4c0')}/><circle cx="70" cy="26" r="3.5" ${F('#8fb4c0')}/>
+      <circle cx="44" cy="50" r="2.6" ${F('#26404a')}/><circle cx="56" cy="50" r="2.6" ${F('#26404a')}/>
+      <path d="M34 62 L28 70 M42 64 L38 74 M58 64 L62 74 M66 62 L72 70" ${S('stroke-width="2.6" stroke="#8fb4c0"')}/>`),
+    mirageling: medallion(`
+      <path d="M50 26 C60 38 62 52 50 66 C38 52 40 38 50 26 Z" ${F('#cde4ec')} opacity="0.75"/>
+      <circle cx="46" cy="44" r="2.4" ${F('#26404a')}/><circle cx="54" cy="44" r="2.4" ${F('#26404a')}/>
+      <path d="M30 70 H70 M34 76 H66" ${S('stroke-width="2" stroke="#cde4ec" stroke-dasharray="5 4"')}/>`),
+    shardhound: medallion(`
+      <path d="M30 60 C28 44 38 34 50 34 C62 34 72 44 70 60 L62 54 C60 64 54 68 50 68 C46 68 40 64 38 54 Z" ${F('#a8c4d0')}/>
+      <path d="M36 36 L40 24 L46 34 M64 36 L60 24 L54 34" ${F('#a8c4d0')}/>
+      <circle cx="43" cy="49" r="2.8" ${F('#26404a')}/><circle cx="57" cy="49" r="2.8" ${F('#26404a')}/>
+      <path d="M46 58 L50 62 L54 58" ${S('stroke-width="2.4" stroke="#26404a"')}/>`),
+    dustprophet: medallion(`
+      <path d="M38 76 C34 58 40 44 50 42 C60 44 66 58 62 76 Z" ${F('#c0a878')}/>
+      <circle cx="50" cy="36" r="8" ${F('#d9c49a')}/>
+      <path d="M44 35 H47 M53 35 H56" ${S('stroke-width="2"')}/>
+      <path d="M28 30 L34 34 M50 22 V28 M72 30 L66 34" ${S('stroke-width="2" stroke="#e0cf9e" stroke-dasharray="3 3"')}/>
+      <path d="M44 56 H56 M44 62 H56" ${S('stroke-width="1.8" stroke="#8a6a3a"')}/>`),
+    prismwyrm: medallion(`
+      <path d="M26 58 L38 42 L50 58 L62 42 L74 58" ${S('stroke-width="7" stroke="#b8dce8"')}/>
+      <path d="M26 58 L38 42 L50 58 L62 42 L74 58" ${S('stroke-width="2.4" stroke="#7ba8c0"')}/>
+      <circle cx="74" cy="56" r="4.5" ${F('#26404a')}/>
+      <path d="M30 34 L34 30 M48 30 L52 26 M66 32 L70 28" ${S('stroke-width="2" stroke="' + GOLD + '"')}/>`),
+    hourtitan: medallion(`
+      <path d="M36 26 H64 L50 50 Z M36 74 H64 L50 50 Z" ${F('#d8c8a2')}/>
+      <path d="M36 26 H64 M36 74 H64" ${S('stroke-width="4"')}/>
+      <path d="M46 66 C48 60 52 60 54 66" ${F('#b09a5e')}/>
+      <circle cx="42" cy="36" r="2.2" ${F('#26404a')}/><circle cx="58" cy="36" r="2.2" ${F('#26404a')}/>`),
+    vitrifier: medallion(`
+      <circle cx="46" cy="44" r="17" ${S('stroke-width="5" stroke="#8fb4c0"')}/>
+      <circle cx="46" cy="44" r="17" ${F('#d8ecf2')} opacity="0.4"/>
+      <path d="M58 56 L74 74" ${S('stroke-width="7" stroke="#6e5238"')}/>
+      <circle cx="46" cy="44" r="5" ${F('#8c2c22')}/>
+      <path d="M34 34 L40 38 M52 30 L54 36" ${S('stroke-width="2" stroke="#fff"')}/>`, 'rgba(225,240,245,0.5)'),
+
+    /* ---- Tier 4 ALT: Moth Court ---- */
+    courtmoth: medallion(`
+      <path d="M50 38 C34 22 20 34 28 48 C34 58 44 54 50 46 Z" ${F('#b0889a')}/>
+      <path d="M50 38 C66 22 80 34 72 48 C66 58 56 54 50 46 Z" ${F('#c49aac')}/>
+      <ellipse cx="50" cy="50" rx="4" ry="13" ${F('#4a2c3a')}/>
+      <path d="M46 34 L42 26 M54 34 L58 26" ${S('stroke-width="2"')}/>
+      <circle cx="38" cy="40" r="2.4" ${F('#f4e6c4')}/><circle cx="62" cy="40" r="2.4" ${F('#f4e6c4')}/>
+      <path d="M40 66 C44 72 56 72 60 66" ${S('stroke-width="2" stroke="' + GOLD + '" stroke-dasharray="3 3"')}/>`),
+    dustcloak: medallion(`
+      <path d="M34 74 C30 52 36 36 50 34 C64 36 70 52 66 74 C60 68 56 72 54 78 C50 70 44 72 42 78 C40 72 36 70 34 74 Z" ${F('#6a5a6e')}/>
+      <path d="M42 46 C46 42 54 42 58 46" ${S('stroke-width="2.4" stroke="#2a222e"')}/>
+      <circle cx="45" cy="52" r="2.4" ${F('#e8d9b0')}/><circle cx="55" cy="52" r="2.4" ${F('#e8d9b0')}/>
+      <path d="M30 40 L36 44 M70 40 L64 44" ${S('stroke-width="2" stroke="#9a8aa0" stroke-dasharray="2 3"')}/>`),
+    lanternthief: medallion(`
+      <rect x="42" y="36" width="16" height="22" rx="4" ${F('#d99a3c')}/>
+      <path d="M42 42 H58 M42 52 H58" ${S('stroke-width="1.8" stroke="#8a5a1c"')}/>
+      <circle cx="50" cy="47" r="4" ${F('#fff3b0')}/>
+      <path d="M50 36 V28 C50 24 56 24 56 28" ${S('stroke-width="2.6" stroke="#8a5a1c"')}/>
+      <path d="M34 66 C40 60 44 60 46 64 M66 66 C60 60 56 60 54 64" ${S('stroke-width="3" stroke="#4a3a52"')}/>
+      <circle cx="34" cy="68" r="4" ${F('#4a3a52')}/><circle cx="66" cy="68" r="4" ${F('#4a3a52')}/>`),
+    silkjudge: medallion(`
+      <path d="M38 74 C34 54 40 40 50 38 C60 40 66 54 62 74 Z" ${F('#8a5a72')}/>
+      <circle cx="50" cy="32" r="8" ${F('#e8d0dc')}/>
+      <path d="M46 31 H48 M52 31 H54" ${S('stroke-width="2"')}/>
+      <path d="M40 24 C44 18 56 18 60 24" ${S('stroke-width="3" stroke="#c49aac"')}/>
+      <path d="M42 54 C46 50 54 50 58 54 L56 60 C52 56 48 56 44 60 Z" ${F('#c49aac')}/>`),
+    velvetduke: medallion(`
+      <rect x="38" y="20" width="24" height="14" rx="2" ${F('#3a2a44')}/>
+      <path d="M34 34 H66" ${S('stroke-width="3.4" stroke="#3a2a44"')}/>
+      <circle cx="50" cy="46" r="9" ${F('#d9c49a')}/>
+      <path d="M46 45 H48 M52 45 H54" ${S('stroke-width="1.8"')}/>
+      <path d="M38 76 C36 62 42 56 50 56 C58 56 64 62 62 76 Z" ${F('#563a66')}/>
+      <path d="M44 62 L50 68 L56 62" ${S('stroke-width="2" stroke="' + GOLD + '"')}/>`),
+    cocoonwarden: medallion(`
+      <ellipse cx="50" cy="50" rx="15" ry="22" ${F('#c8bc96')}/>
+      <path d="M38 38 C46 42 54 42 62 38 M36 50 C46 54 54 54 64 50 M38 62 C46 66 54 66 62 62" ${S('stroke-width="2.4" stroke="#8a7a54"')}/>
+      <circle cx="45" cy="44" r="2.2" ${F('#4a3a22')}/><circle cx="55" cy="44" r="2.2" ${F('#4a3a22')}/>`),
+    mothqueen: medallion(`
+      <path d="M32 28 L36 20 L42 27 L50 18 L58 27 L64 20 L68 28 Z" ${F(GOLD)}/>
+      <path d="M50 44 C32 28 16 42 26 56 C34 66 46 60 50 50 Z" ${F('#a06a86')}/>
+      <path d="M50 44 C68 28 84 42 74 56 C66 66 54 60 50 50 Z" ${F('#b87a96')}/>
+      <ellipse cx="50" cy="54" rx="4.5" ry="14" ${F('#3a2030')}/>
+      <circle cx="40" cy="46" r="2.6" ${F('#f4e6c4')}/><circle cx="60" cy="46" r="2.6" ${F('#f4e6c4')}/>`, 'rgba(240,225,235,0.5)'),
+
+    /* ---- Tier 5 ALT: Margin Abyss ---- */
+    erratabeast: medallion(`
+      <path d="M30 62 C28 44 38 34 50 34 C62 34 72 44 70 62 C64 70 36 70 30 62 Z" ${F('#5a5248')}/>
+      <path d="M36 44 L64 60 M64 44 L36 60" ${S('stroke-width="3" stroke="#c0392b"')}/>
+      <circle cx="42" cy="48" r="3" ${F('#f4e6c4')}/><circle cx="58" cy="48" r="3" ${F('#f4e6c4')}/>
+      <path d="M42 64 H58" ${S('stroke-width="2.4" stroke="#2c2620"')}/>`),
+    footnotehorror: medallion(`
+      <text x="50" y="56" text-anchor="middle" font-size="40" font-weight="bold" fill="#4a4038" font-family="Georgia">*</text>
+      <path d="M34 64 C30 70 28 76 30 80 M44 66 C42 72 42 78 44 82 M56 66 C58 72 58 78 56 82 M66 64 C70 70 72 76 70 80" ${S('stroke-width="2.6" stroke="#4a4038"')}/>
+      <circle cx="42" cy="40" r="2.6" ${F('#c0392b')}/><circle cx="58" cy="40" r="2.6" ${F('#c0392b')}/>`),
+    blankling: medallion(`
+      <rect x="34" y="30" width="32" height="40" rx="4" ${F('#efe8da')}/>
+      <rect x="34" y="30" width="32" height="40" rx="4" ${S('stroke-width="2.4" stroke="#b0a890"')}/>
+      <circle cx="45" cy="46" r="2.6" ${F('#8a8270')}/><circle cx="55" cy="46" r="2.6" ${F('#8a8270')}/>
+      <path d="M44 58 H56" ${S('stroke-width="2" stroke="#b0a890" stroke-dasharray="2 3"')}/>`),
+    inkleech: medallion(`
+      <path d="M30 60 C28 48 36 44 42 50 C44 40 56 38 60 46 C68 44 74 52 68 60 C60 70 38 70 30 60 Z" ${F('#26202c')}/>
+      <circle cx="56" cy="50" r="2.8" ${F('#c0392b')}/>
+      <path d="M64 62 C70 66 74 72 74 78" ${S('stroke-width="3.4" stroke="#26202c"')}/>
+      <path d="M36 54 C40 52 42 54 44 56" ${S('stroke-width="2" stroke="#4a3f56"')}/>`),
+    redactor: medallion(`
+      <rect x="30" y="36" width="40" height="30" rx="3" ${F('#e2d4ae')}/>
+      <path d="M34 44 H66 M34 52 H66 M34 60 H58" ${S('stroke-width="4.5" stroke="#1c1814"')}/>
+      <path d="M58 24 L74 40" ${S('stroke-width="5" stroke="#1c1814"')}/>
+      <circle cx="50" cy="76" r="3.4" ${F('#c0392b')}/>`),
+    appendixwyrm: medallion(`
+      <path d="M24 60 C28 44 40 38 52 44 C64 50 70 44 72 34" ${S('stroke-width="8" stroke="#6a5a48"')}/>
+      <path d="M24 60 C30 68 42 70 50 64" ${S('stroke-width="6" stroke="#6a5a48"')}/>
+      <circle cx="72" cy="32" r="5" ${F('#6a5a48')}/>
+      <circle cx="73" cy="30" r="1.8" ${F('#ffd75c')}/>
+      <path d="M34 48 H44 M36 56 H46" ${S('stroke-width="1.6" stroke="#3a3228"')}/>`),
+    marginalia: medallion(`
+      <text x="50" y="62" text-anchor="middle" font-size="46" fill="#3a2030" font-family="Georgia">❦</text>
+      <path d="M26 30 C32 26 38 26 42 30 M58 30 C64 26 70 26 74 30" ${S('stroke-width="2.4" stroke="#8c2c22"')}/>
+      <circle cx="34" cy="40" r="2.6" ${F('#8c2c22')}/><circle cx="66" cy="40" r="2.6" ${F('#8c2c22')}/>
+      <path d="M30 74 C40 70 60 70 70 74" ${S('stroke-width="2.4" stroke="#3a2030" stroke-dasharray="4 3"')}/>`, 'rgba(240,225,230,0.5)'),
+
+    /* ---- Tier 6: THE UNWRITTEN ---- */
+    unletter: medallion(`
+      <rect x="36" y="32" width="28" height="36" rx="3" ${S('stroke-width="3" stroke="#8a8270" stroke-dasharray="6 5"')}/>
+      <circle cx="46" cy="46" r="2.4" ${F('#8a8270')}/><circle cx="54" cy="46" r="2.4" ${F('#8a8270')}/>
+      <path d="M44 58 C48 56 52 56 56 58" ${S('stroke-width="2" stroke="#8a8270"')}/>`),
+    nullscribe: medallion(`
+      <path d="M38 76 C34 56 40 42 50 40 C60 42 66 56 62 76 Z" ${F('#c8c0b0')} opacity="0.6"/>
+      <circle cx="50" cy="34" r="8" ${S('stroke-width="2.6" stroke="#8a8270" stroke-dasharray="4 4"')}/>
+      <path d="M64 48 C70 44 74 38 74 32" ${S('stroke-width="2.6" stroke="#8a8270" stroke-dasharray="3 3"')}/>
+      <path d="M44 56 H56 M44 62 H52" ${S('stroke-width="1.6" stroke="#a89e8a" stroke-dasharray="2 3"')}/>`),
+    unwrittenone: medallion(`
+      <rect x="28" y="26" width="44" height="50" rx="5" ${F('#141210')}/>
+      <rect x="28" y="26" width="44" height="50" rx="5" ${S('stroke-width="2.6" stroke="#8a6fd0"')}/>
+      <circle cx="42" cy="46" r="3.4" ${F('#efe8da')}/><circle cx="58" cy="46" r="3.4" ${F('#efe8da')}/>
+      <path d="M40 62 C46 58 54 58 60 62" ${S('stroke-width="2.6" stroke="#efe8da"')}/>
+      <path d="M22 20 L28 26 M78 20 L72 26 M22 82 L28 76 M78 82 L72 76" ${S('stroke-width="2.4" stroke="#8a6fd0"')}/>`, 'rgba(210,205,225,0.4)'),
   };
 
   const CRESTS = {
+    echoist: medallion(`
+      <path d="M38 54 C38 38 44 30 50 30 C56 30 62 38 62 54 L66 60 H34 Z" ${F('#8a6fd0')}/>
+      <circle cx="50" cy="66" r="4" ${F(GOLD)}/>
+      <path d="M28 40 C24 46 24 54 28 60 M72 40 C76 46 76 54 72 60" ${S('stroke-width="2.4" stroke="#8a6fd0" stroke-dasharray="4 4"')}/>`),
+    inkblade: medallion(`
+      <path d="M50 18 L56 30 L54 62 H46 L44 30 Z" ${F('#4a5568')}/>
+      <path d="M38 64 H62 M50 64 V78" ${S('stroke-width="4" stroke="#6e5238"')}/>
+      <circle cx="50" cy="80" r="3.4" ${F(GOLD)}/>
+      <path d="M46 34 C40 40 38 48 40 54 M54 34 C60 40 62 48 60 54" ${S('stroke-width="2" stroke="#26202c"')}/>`),
     scribe: medallion(`
       <path d="M62 22 C50 32 42 44 38 60 L36 70 L46 64 C56 52 62 40 66 28 Z" ${F(INK2)}/>
       <path d="M38 60 L46 64" ${S('stroke-width="2" stroke="' + GOLD + '"')}/>

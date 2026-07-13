@@ -18,6 +18,11 @@
       bestWorld: 1,
       runsPlayed: 0,
       spellsCast: 0,
+      bestStreak: 0,
+      guessDist: {},          // len -> {guessCount: solves}
+      deepestSpiral: 0,
+      trueEnding: false,
+      forbiddenMastered: [],
       // whispered-secret overrides
       unlockAllClasses: false,
       unlockAllDifficulties: false,

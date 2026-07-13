@@ -25,7 +25,13 @@ Desktop and portrait/mobile layouts included.
   casts gets expensive fast. Tome-casts, free guesses and resonance bypass the
   surcharge — building around them is what makes or breaks a run.
   Green = right rune, right place; yellow = right rune, wrong place; grey = absent.
-- **Scry.** Once per turn, freely ask the tome whether a chosen letter is in the word.
+- **No deduction is wasted.** An unsolved mystery word — its grid, scries and
+  reveals — **follows you to the next battle**. Learned words consistent with the
+  feedback appear as **tap-to-guess chips**, so the grimoire does the typing.
+- **Streaks.** Correct guesses on consecutive turns chain: +1 💡, then +1 ⚡, then a
+  free scry, then spells ×1.15 while the streak holds.
+- **Scry.** Once per turn, freely ask the tome whether a chosen letter is in the word —
+  right-click / long-press any keyboard letter to scry it instantly.
 - **Casting.** Guess the word → its spell casts. **First-guess casts are ×1.5.**
 - **Engraving & resonance.** Correct words are learned *permanently* — across runs.
   Learned words stay in the serving pool, and **every guess you make carries a 35%
@@ -71,7 +77,11 @@ Desktop and portrait/mobile layouts included.
 
 ## The run
 
-5 worlds × 6 stages on a **branching map**: battles (some with multi-foe packs),
+5 world tiers × 6 stages — and after every boss, **choose between two worlds**: the
+storied road or a riskier alternate (the Drowned Orchard, the Glass Desert, the Moth
+Court, the Margin Abyss — 28 new foes) with more elites and richer spoils. Every world
+turns under a rolled **Page Condition** (Inkstorm, Dead Silence, Heavy Ink…), and each
+battle favors a **resonant school** (×1.3). Maps hold battles (some with multi-foe packs),
 elites (**guaranteed relic drops**), treasure, whispering shrines, **strange
 encounters** (10 choice events — cursed lexicons, ink-imp wagers, bound djinn…), and a
 world boss. The **Arcane Forge** is always reachable from the map: upgrade cards (×1.5
@@ -87,8 +97,26 @@ effects) or unbind them.
 - **28 relics** in two rarity tiers (rarer tier rolls 3× less often) — Coal of the
   First Word (+1 max ⚡), Resonant Bell / Choir of Echoes (+10/20% resonance),
   Lexicographer's Monocle / Index of All Things (+1/+2 mastered-length reveals)…
+- **Prepared Sigils** — slot up to 3 learned words before battle: +20% resonance and
+  a revealed rune when served.
+- **Word Inscription** — at the forge, permanently bind a learned word onto a card;
+  it carries 40% of the spell forever. Your grimoire is crafting material.
 - **Daily Challenge** — a date-seeded run (same class, seed and difficulty for
   everyone that day) with a shareable emoji result.
+- **The Chronicle** — a stats page in the tome: wins, streak records, guess
+  distributions per length, spiral depth, forbidden masteries.
+
+## Secrets & endgame
+
+- **Words of Power murmurs** — shrines whisper riddle-hints toward the six ×2 words.
+- **THE UNWRITTEN** — cast all 6 Words of Power in one run and a secret 6th world
+  tears open behind the final boss, ending in THE UNWRITTEN ONE and the true ending.
+- **The Forbidden Word** — one of five 11-letter words is bound to each run. Gather
+  all four torn fragments (shrines, treasures) to learn it. You may speak it **once**
+  per run: truth is devastation (120 AoE, total erasure, the End of Dreams…); error
+  **sews your mouth shut** — no guesses, no tomes, no spells, for the rest of the run.
+- **The Endless Spiral** — after victory, descend into World 6+ with compounding
+  scaling and chase your deepest chronicle entry.
 
 Four difficulties (Novice → Archmage). Scaling is deliberately steep: **words learned
 in dying runs power your future runs.**
@@ -123,7 +151,8 @@ js/data/cards.js    128-card pool, energy costs, rarities, unlocks
 js/data/relics.js   24 passive artifacts
 js/data/events.js   10 choice encounters
 js/data/classes.js  classes & difficulties
-js/data/enemies.js  5 worlds of foes, packs + scaling knobs
+js/data/enemies.js  9 worlds of foes (5 tiers + alternates + secret), scaling knobs
+js/data/arcana.js   forbidden words, page conditions, murmurs
 js/main.js          screens, battle UI, map, forge, grimoire, daily
 js/bestiary.js      SVG illuminated bestiary (33 foes, crests, glyphs)
 js/particles.js     canvas FX (sparks, runes, novas, confetti)

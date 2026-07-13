@@ -13,6 +13,7 @@ const ClassData = require('../js/data/classes.js');
 const EnemyData = require('../js/data/enemies.js');
 const RelicData = require('../js/data/relics.js');
 const EventData = require('../js/data/events.js');
+const ArcanaData = require('../js/data/arcana.js');
 
 const RUNS = Number(process.argv[2]) || 200;
 
@@ -209,17 +210,29 @@ function runBattle(state, enemies, world, stage, skill, rng) {
     rng, cls: state.cls, deck: state.deck, hp: state.hp, maxHp: state.maxHp,
     enemyIds: enemies, world, stage, difficulty: state.diff, meta: state.meta,
     wordLen: 5, relics: state.relics,
+    condition: state.condition, sigils: state.sigils, savedWord: state.savedWord,
   });
-  b.wordLen = pickLength(b, unlocked, skill);
+  if (!state.savedWord) b.wordLen = pickLength(b, unlocked, skill);
+  state.savedWord = null;
   Engine.startPlayerTurn(b);
   Engine.drainEvents(b);
   let turns = 0;
   while (!b.over && turns++ < 60) playTurn(b, skill, rng);
   if (!b.over) { b.over = true; b.won = false; }
+  state.savedWord = Engine.exportWord(b); // unsolved deduction follows the run
   state.hp = b.player.hp;
   state.maxHp = b.player.maxHp;
   state.gold += b.goldGained;
   return { won: b.won, turns, hpLeft: b.player.hp };
+}
+
+function pickSigils(state) {
+  // slot the three heaviest-hitting learned words
+  const scored = Array.from(state.meta.learnedWords).map(w => {
+    const fx = WordData.SPELLS[w].fx;
+    return { w, v: (fx.dmg || 0) + (fx.block || 0) * 0.6 + (fx.poison || 0) + (fx.burn || 0) };
+  }).sort((a, z) => z.v - a.v);
+  return scored.slice(0, 3).map(x => x.w);
 }
 
 /* ---------- events ---------- */
@@ -290,15 +303,20 @@ function simulateRun(clsId, diffIdx, learnedCount, skill, seed, metaOpts) {
   const state = {
     cls, diff, meta,
     deck: cls.deck.map(id => ({ id, upgraded: false })),
-    hp: cls.hp, maxHp: cls.hp, gold: 0, insight: 0,
+    hp: cls.hp, maxHp: cls.hp, gold: 0,
     upgrades: 0, removals: 0, relics: [],
+    condition: null, sigils: [], savedWord: null,
   };
   const result = { world: 1, stage: 0, won: false, battles: 0, turnsTotal: 0, wordsLearnedRun: 0, relics: 0 };
   const learnedBefore = meta.learnedWords.size;
 
   for (let world = 1; world <= 5; world++) {
     result.world = world;
-    const map = Engine.generateWorldMap(rng, world);
+    const variants = EnemyData.variantsForTier(world);
+    const wchoice = variants[Math.floor(rng() * variants.length)];
+    state.condition = ArcanaData.CONDITIONS[Math.floor(rng() * ArcanaData.CONDITIONS.length)].mod;
+    state.sigils = pickSigils(state);
+    const map = Engine.generateWorldMap(rng, world, wchoice.id);
     let pos = Math.floor(rng() * map.columns[0].length);
     for (let s = 0; s < 6; s++) {
       const node = map.columns[s][pos];
@@ -308,8 +326,9 @@ function simulateRun(clsId, diffIdx, learnedCount, skill, seed, metaOpts) {
         result.battles++; result.turnsTotal += r.turns;
         if (!r.won) { result.wordsLearnedRun = meta.learnedWords.size - learnedBefore; result.relics = state.relics.length; return result; }
         const kind = node.type;
-        let gold = EnemyData.goldReward(world, kind === 'boss' ? 'boss' : kind, state.diff, rng);
+        let gold = EnemyData.goldReward(world, kind === 'boss' ? 'boss' : kind, state.diff, rng, map.risky);
         gold = Math.round(gold * (1 + RelicData.mod(state.relics, 'aurumPct') / 100));
+        gold = Math.round(gold * (1 + ((state.condition && state.condition.goldPct) || 0) / 100));
         state.gold += gold;
         const healPct = node.type === 'boss' ? Engine.RUN_RULES.bossHealMissingPct : Engine.RUN_RULES.postBattleHealMissingPct;
         state.hp = Math.min(state.maxHp, state.hp + Math.round((state.maxHp - state.hp) * healPct));

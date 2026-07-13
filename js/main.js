@@ -128,7 +128,8 @@
   }
 
   function renderTitle() {
-    screen = 'title'; setBattleChrome(false); bookmarks([]);
+    screen = 'title'; setBattleChrome(false);
+    bookmarks([['Chronicle', 'gold', () => renderChronicleOverlay()]]);
     $L.innerHTML = ''; $R.innerHTML = '';
     const left = el('div', '', `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%">
@@ -279,11 +280,14 @@
     const cls = ClassData.CLASSES.find(c => c.id === clsId);
     run = {
       classId: clsId, difficulty: 1,
-      world: 1, seed, seedStep: 0,
+      world: 1, worldId: 'woods', seed, seedStep: 0,
       deck: cls.deck.map(id => ({ id, upgraded: false })),
-      hp: cls.hp, maxHp: cls.hp, gold: 0, insight: 0,
-      upgrades: 0, removals: 0, wordLen: 5,
+      hp: cls.hp, maxHp: cls.hp, gold: 0,
+      upgrades: 0, removals: 0, inscriptions: 0, wordLen: 5,
       map: null, pos: null, done: [], relics: [],
+      condition: null, sigils: [], savedWord: null,
+      powersCast: [], spiral: false, wonRecorded: false,
+      forbidden: { idx: seed % 5, fragments: [false, false, false, false], attempted: false, sewn: false, mastered: false },
       daily: dateStr,
     };
     meta.runsPlayed++;
@@ -308,7 +312,7 @@
         <div class="ci">${Bestiary.crest(c.id)}</div>
         <div style="flex:1">
           <b>${c.name}</b> <span class="small">· ${c.hp} HP</span><br>
-          <span class="small">${locked ? '🔒 Win with all other classes to unlock' : c.tagline}</span>
+          <span class="small">${locked ? '🔒 ' + (c.unlockText || 'Win with all other classes to unlock') : c.tagline}</span>
         </div>`);
       if (!locked) d.onclick = () => { selClass = c.id; Sfx.card(); renderClassSelect(); };
       left.appendChild(d);
@@ -358,11 +362,14 @@
     const cls = ClassData.CLASSES.find(c => c.id === selClass);
     run = {
       classId: selClass, difficulty: selDiff,
-      world: 1, seed: Math.floor(Math.random() * 1e9), seedStep: 0,
+      world: 1, worldId: 'woods', seed: Math.floor(Math.random() * 1e9), seedStep: 0,
       deck: cls.deck.map(id => ({ id, upgraded: false })),
-      hp: cls.hp, maxHp: cls.hp, gold: 0, insight: 0,
-      upgrades: 0, removals: 0, wordLen: 5,
+      hp: cls.hp, maxHp: cls.hp, gold: 0,
+      upgrades: 0, removals: 0, inscriptions: 0, wordLen: 5,
       map: null, pos: null, done: [], relics: [],
+      condition: null, sigils: [], savedWord: null,
+      powersCast: [], spiral: false, wonRecorded: false,
+      forbidden: { idx: Math.floor(Math.random() * 5), fragments: [false, false, false, false], attempted: false, sewn: false, mastered: false },
       daily: null,
     };
     meta.runsPlayed++;
@@ -377,11 +384,23 @@
   }
 
   function newWorldMap() {
-    run.map = Engine.generateWorldMap(runRng(), run.world);
+    const rng = runRng();
+    run.map = Engine.generateWorldMap(rng, run.world, run.worldId);
+    // each world turns under a Page Condition
+    run.condition = ArcanaData.CONDITIONS[Math.floor(rng() * ArcanaData.CONDITIONS.length)].id;
     run.pos = null;
     run.done = [];
     SaveSystem.saveRun(run);
   }
+  function condMod() {
+    const c = ArcanaData.CONDITIONS.find(x => x.id === run.condition);
+    return c ? c.mod : {};
+  }
+  function condDef() {
+    return ArcanaData.CONDITIONS.find(x => x.id === run.condition) || null;
+  }
+  function forbiddenDef() { return ArcanaData.FORBIDDEN[run.forbidden.idx]; }
+  function fragmentsOwned() { return run.forbidden.fragments.filter(Boolean).length; }
 
   function nodeKey(n) { return n.stage + ':' + n.idx; }
 
@@ -409,16 +428,19 @@
     bookmarks([
       ['Grimoire', 'arc', () => renderGrimoireOverlay()],
       ['Arcane Forge', 'gold', () => renderForgeOverlay()],
+      ['Sigils', 'arc', () => renderSigilsOverlay()],
       ['Abandon', '', () => { if (confirm('Abandon this expedition? Learned words are kept.')) { SaveSystem.clearRun(); run = null; flipTo(renderTitle); } }],
     ]);
-    const world = EnemyData.WORLDS[run.world - 1];
+    const world = EnemyData.WORLD_BY_ID[run.worldId] || EnemyData.WORLDS[0];
     const cls = ClassData.CLASSES.find(c => c.id === run.classId);
     const diff = ClassData.DIFFICULTIES[run.difficulty];
+    const cd = condDef();
     $L.innerHTML = ''; $R.innerHTML = '';
 
     const left = el('div', '', `
-      <div class="rune-title">${world.icon} ${world.name}</div>
-      <div class="small center"><i>${world.blurb}</i></div>
+      <div class="rune-title">${world.icon} ${world.name}${run.spiral ? ` <span class="small">· Spiral ${run.world - 5}</span>` : ''}</div>
+      <div class="small center"><i>${world.blurb}</i>${run.map && run.map.risky ? ' · <b style="color:var(--blood)">riskier road</b>' : ''}</div>
+      ${cd ? `<div class="cond-banner">${cd.icon} <b>${cd.name}</b> — ${cd.desc}</div>` : ''}
       <div class="hud" style="margin-top:12px">
         <span class="stat">❤️ ${run.hp}/${run.maxHp}</span>
         <span class="stat">🪙 ${run.gold}</span>
@@ -427,10 +449,14 @@
         <span class="stat">${cls.icon} ${cls.name}</span>
         <span class="stat">${diff.icon} ${diff.name}${run.daily ? ' · 🗓️ Daily' : ''}</span>
         <span class="stat">🃏 ${run.deck.length} cards</span>
+        ${run.sigils.length ? `<span class="stat" title="Prepared sigils">🪧 ${run.sigils.join(', ')}</span>` : ''}
+        ${fragmentsOwned() ? `<span class="stat" title="Forbidden fragments">🧩 ${fragmentsOwned()}/4</span>` : ''}
+        ${run.forbidden.sewn ? '<span class="stat" style="color:var(--blood)" title="Your mouth is sewn shut — no spells this run">🤐 SEWN</span>' : ''}
+        ${run.powersCast.length ? `<span class="stat" title="Words of Power spoken this run">⚡ ${run.powersCast.length}/6</span>` : ''}
       </div>
       ${relicBarHtml(run.relics)}
       <div class="small" style="margin-top:10px">
-        World <b>${run.world}</b> of 5 — six stages each.<br><br>
+        World <b>${run.world}</b>${run.world <= 5 ? ' of 5' : ' (the Spiral)'} — ${run.map.columns.length} stages.<br><br>
         <b>Legend:</b><br>
         ⚔️ Battle (some hold <i>packs</i> of foes) · 💀 Elite (drops a relic)<br>
         🎁 Treasure · 🕯️ Shrine · ❓ Strange encounter · 👑 World Boss<br><br>
@@ -522,6 +548,10 @@
     const gold = Math.round((RR.treasureGold[0] + rng() * (RR.treasureGold[1] - RR.treasureGold[0])) * diff.goldMult);
     run.gold += gold;
     Sfx.coin();
+    const nextFrag = run.forbidden.fragments.indexOf(false);
+    if (nextFrag >= 0 && !run.forbidden.attempted && rng() < 0.25) {
+      setTimeout(() => grantFragment(nextFrag), 900);
+    }
     const withCard = rng() < RR.treasureCardChance;
     const m = overlayPanel(`<div class="rune-title">🎁 A Gilded Cache</div>
       <p class="center">Tucked between the pages: <b>${gold} aurum</b>.</p>`);
@@ -567,7 +597,37 @@
         FX.runes(window.innerWidth / 2, window.innerHeight / 2, w, { color: '#ffd700' });
       });
     }
+    // a torn fragment of the forbidden word, if any remain
+    const nextFrag = run.forbidden.fragments.indexOf(false);
+    if (nextFrag >= 0 && !run.forbidden.attempted) {
+      mkBtn('🧩 Torn Fragment (of a forbidden word)', () => {
+        grantFragment(nextFrag);
+      });
+    }
+    // murmurs of undiscovered Words of Power
+    const undisc = Object.keys(ArcanaData.MURMURS).filter(w => !meta.discoveredPower.includes(w));
+    if (undisc.length) {
+      mkBtn('👂 Heed the Murmurs', () => {
+        const w = undisc[Math.floor(rng() * undisc.length)];
+        Sfx.scry();
+        toast(`👂 <i>"${ArcanaData.MURMURS[w]}"</i>`, 5200);
+      });
+    }
     m.p.appendChild(row);
+  }
+
+  function grantFragment(idx) {
+    run.forbidden.fragments[idx] = true;
+    SaveSystem.saveRun(run);
+    const word = forbiddenDef().word;
+    const slots = ArcanaData.FRAGMENT_SLOTS[idx];
+    const shown = slots.map(i => `${word[i]}<sub>${i + 1}</sub>`).join(' ');
+    Sfx.power();
+    FX.runes(window.innerWidth / 2, window.innerHeight / 2, slots.map(i => word[i]).join(''), { color: '#c1121f' });
+    const left = 4 - fragmentsOwned();
+    toast(`🧩 <i>${ArcanaData.FRAGMENT_FLAVOR[idx]}</i><br><b style="letter-spacing:0.2em">${shown}</b>` +
+      (left ? `<br><span class="small">${left} fragment${left > 1 ? 's' : ''} still missing</span>`
+            : '<br><b style="color:#ff8a8a">The forbidden word is whole. Speak it — once — if you dare.</b>'), 6000);
   }
 
   /* ---------- choice events ---------- */
@@ -698,7 +758,10 @@
       enemyIds: node.enemies, world: run.world, stage: node.stage,
       difficulty: diff, meta: metaForEngine(), wordLen: run.wordLen,
       relics: run.relics,
+      condition: condMod(), sigils: run.sigils,
+      savedWord: run.savedWord, sewn: run.forbidden && run.forbidden.sewn,
     });
+    run.savedWord = null;
     battle._node = node;
     currentGuess = '';
     if (node.type === 'boss') Sfx.stinger();
@@ -745,16 +808,22 @@
     if (isPlayer && unit.freeGuesses) chips.push(`🗣 free ×${unit.freeGuesses}`);
     if (isPlayer && unit.resonance > 0.351) chips.push(`🔔 resonance ${Math.round(unit.resonance * 100)}%`);
     if (isPlayer && unit.guessCost > 1) chips.push(`🗣 guesses ${unit.guessCost} 💡`);
+    if (isPlayer && unit.streak > 0) chips.push(`🔥 streak ${unit.streak}${unit.streak >= 4 ? ' ×1.15' : ''}`);
+    if (isPlayer && unit.blade > 0) chips.push(`🗡 blade +${unit.blade}`);
+    if (isPlayer && unit.sewn) chips.push(`🤐 SEWN`);
     return chips.map(c => `<span class="status-chip">${c}</span>`).join('');
   }
 
   function renderBattleLeft() {
     const b = battle;
-    const world = EnemyData.WORLDS[b.world - 1];
+    const world = EnemyData.WORLD_BY_ID[run.worldId] || EnemyData.WORLDS[0];
     const single = b.enemies.length === 1;
     const anyBig = b.enemies.some(e => e.elite || e.boss);
+    const rs = WordData.SCHOOLS[b.resonantSchool];
+    const cdB = condDef();
     $L.innerHTML = `
-      <div class="small center">${world.icon} ${world.name} — stage ${b.stage}${anyBig ? (b.enemies[0].boss ? ' · <b>BOSS</b>' : ' · <b>ELITE</b>') : ''}</div>
+      <div class="small center">${world.icon} ${world.name} — stage ${b.stage}${anyBig ? (b.enemies[0].boss ? ' · <b>BOSS</b>' : ' · <b>ELITE</b>') : ''}
+        · <span class="school-chip" title="This battle favors ${rs.name} — its spells cast at ×1.3">${rs.icon} ${rs.name} hour</span>${cdB ? ` <span class="school-chip" title="${cdB.desc}">${cdB.icon} ${cdB.name}</span>` : ''}</div>
       <div class="foe-row">${b.enemies.map((e, i) => `
         <div class="foe-box ${single ? 'single' : ''} ${e.hp <= 0 ? 'dead' : (!single && i === b.target ? 'targeted' : '')}" data-idx="${i}">
           <div class="fname">${e.name}</div>
@@ -862,6 +931,27 @@
     grid.appendChild(irow);
     wrap.appendChild(grid);
 
+    // tap-to-guess: learned words consistent with everything known so far
+    const cands = Engine.consistentLearned(b);
+    if (cands.length && !b.player.sewn) {
+      const strip = el('div', 'cand-strip');
+      cands.slice(0, 8).forEach(cw => {
+        const chip = el('button', 'cand-chip', cw);
+        chip.title = `${WordData.SPELLS[cw].name} — one tap to speak it`;
+        chip.onclick = () => {
+          if (!Engine.canGuess(b)) { toast('No insight to speak with'); return; }
+          currentGuess = cw;
+          submitGuess();
+        };
+        strip.appendChild(chip);
+      });
+      if (cands.length > 8) strip.appendChild(el('span', 'small', `+${cands.length - 8} more`));
+      wrap.appendChild(strip);
+    }
+    if (b.player.sewn) {
+      wrap.appendChild(el('div', 'sewn-banner', '🤐 Your mouth is sewn shut. The word watches you in silence.'));
+    }
+
     const gb = el('div', 'center', '');
     gb.style.marginTop = '7px';
     const canG = Engine.canGuess(b);
@@ -879,11 +969,76 @@
     scryBtn.style.marginLeft = '8px';
     scryBtn.onclick = scryModal;
     gb.appendChild(scryBtn);
-    if (!canG) gb.appendChild(el('div', 'small', 'No insight — play cards to gain 💡'));
+    if (fragmentsOwned() >= 1 && !run.forbidden.attempted && !b.player.sewn) {
+      const fb = el('button', 'ghost small-btn forbidden-btn', `🕯 Forbidden (${fragmentsOwned()}/4)`);
+      fb.title = 'Speak the Forbidden Word — one attempt per run. Failure sews your mouth shut.';
+      fb.style.marginLeft = '8px';
+      fb.onclick = forbiddenRitualModal;
+      gb.appendChild(fb);
+    }
+    if (!canG && !b.player.sewn) gb.appendChild(el('div', 'small', 'No insight — play cards to gain 💡'));
     wrap.appendChild(gb);
 
     wrap.appendChild(renderKeyboard());
     $R.appendChild(wrap);
+  }
+
+  function forbiddenRitualModal() {
+    const b = battle;
+    const fdef = forbiddenDef();
+    const word = fdef.word;
+    const known = run.forbidden.fragments.map((have, fi) =>
+      have ? ArcanaData.FRAGMENT_SLOTS[fi] : []).flat();
+    const template = word.split('').map((c, i) => known.includes(i) ? c : null);
+    const m = overlayPanel(`<div class="rune-title" style="color:var(--blood)">🕯 The Forbidden Word</div>
+      <p class="small center" style="max-width:430px">Eleven runes. <b>One attempt, ever, this run.</b><br>
+      Speak it true and <i>${fdef.epithet}</i> is yours.<br>
+      Speak it false and the tome <b style="color:var(--blood)">sews your mouth shut</b> — no guesses, no tomes, no spells, for the rest of the run.</p>
+      <div class="grow" style="justify-content:center;margin:10px 0">${template.map(c =>
+        `<div class="tile sm ${c ? 'revealed' : ''}">${c || '·'}</div>`).join('')}</div>`);
+    const input = el('input');
+    input.type = 'text'; input.maxLength = 11; input.autocomplete = 'off';
+    input.style.cssText = 'display:block;margin:10px auto;padding:8px 12px;font-family:inherit;font-size:17px;' +
+      'letter-spacing:0.22em;text-transform:uppercase;text-align:center;background:rgba(255,240,235,0.7);' +
+      'border:1.5px solid var(--blood);border-radius:8px;color:var(--ink);width:300px;outline:none';
+    m.p.appendChild(input);
+    const row = el('div', 'center');
+    const speak = el('button', 'arcane', '🕯 SPEAK IT');
+    speak.style.background = 'linear-gradient(180deg, #8c2c22, #5a1414)';
+    const flee = el('button', 'ghost small-btn', 'Not yet');
+    flee.style.marginLeft = '8px';
+    row.appendChild(speak); row.appendChild(flee);
+    m.p.appendChild(row);
+    const submit = () => {
+      const spoken = (input.value || '').trim().toUpperCase();
+      if (spoken.length !== 11) { toast('Eleven runes. No more, no fewer.'); return; }
+      m.close();
+      run.forbidden.attempted = true;
+      const res = Engine.speakForbidden(b, spoken, fdef);
+      if (res.correct) {
+        run.forbidden.mastered = true;
+        if (!meta.forbiddenMastered.includes(word)) meta.forbiddenMastered.push(word);
+        SaveSystem.saveMeta(meta);
+        Sfx.power(); Sfx.victory();
+        FX.powerNova(window.innerWidth / 2, window.innerHeight / 2);
+        FX.confetti();
+        FX.runes(window.innerWidth / 2, window.innerHeight / 3, word, { color: '#c1121f', size: 32 });
+        toast(`🕯 <b>${word}</b> — ${fdef.name}. ${fdef.desc}. The tome flinches.`, 5600);
+      } else {
+        run.forbidden.sewn = true;
+        Sfx.defeat();
+        shakeTome();
+        toast(`🤐 <b>WRONG.</b> Black thread stitches your lips closed. No spell will answer you again this run.`, 5600);
+      }
+      SaveSystem.saveRun(run);
+      processEvents(Engine.drainEvents(b));
+      renderBattleLeft(); renderBattleRight(); renderHand(); renderBattleHud();
+      if (b.over) finishBattle();
+    };
+    speak.onclick = submit;
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); e.stopPropagation(); });
+    flee.onclick = m.close;
+    setTimeout(() => input.focus(), 80);
   }
 
   function scryModal() {
@@ -957,7 +1112,24 @@
         if (battle.word && battle.word.vowelInfo && battle.word.vowelInfo[ch] === 'present' && st[ch] !== 'correct') {
           k.classList.add('vowel-present');
         }
-        k.onclick = () => typeLetter(ch);
+        k.onclick = () => { if (!k._longpressed) typeLetter(ch); k._longpressed = false; };
+        // quick-scry: right-click or long-press asks the tome about this letter
+        const quickScry = (e) => {
+          e.preventDefault();
+          if (!Engine.canScry(battle)) { toast(battle.condition && battle.condition.noScry ? 'Dead Silence — no scrying this world' : 'No scries left this turn'); return; }
+          if (st[ch]) return; // already known
+          const res = Engine.scry(battle, ch);
+          Sfx.scry();
+          processEvents(Engine.drainEvents(battle));
+          renderBattleRight();
+          toast(res.present ? `🔮 <b>${ch}</b> dwells within!` : `🔮 <b>${ch}</b> is absent.`);
+        };
+        k.addEventListener('contextmenu', quickScry);
+        k.addEventListener('touchstart', () => {
+          k._lpTimer = setTimeout(() => { k._longpressed = true; quickScry({ preventDefault: () => {} }); }, 480);
+        }, { passive: true });
+        k.addEventListener('touchend', () => clearTimeout(k._lpTimer));
+        k.addEventListener('touchmove', () => clearTimeout(k._lpTimer));
         row.appendChild(k);
       });
       kb.appendChild(row);
@@ -1185,6 +1357,35 @@
         case 'guessCostUp':
           later(() => log(`🗣 The tome demands more — further guesses cost <b>${ev.cost} 💡</b> this turn.`));
           break;
+        case 'streak':
+          later(() => {
+            const tiers = { 1: 'the chain begins', 2: '+1 💡', 3: '+1 ⚡', 4: '+1 scry & spells ×1.15' };
+            log(`🔥 <b>Streak ${ev.streak}</b> — ${tiers[Math.min(ev.streak, 4)]}${ev.streak > 4 ? ' (sustained)' : ''}.`);
+            if (ev.streak >= 2) toast(`🔥 Streak ×${ev.streak}! ${tiers[Math.min(ev.streak, 4)]}`, 2000);
+            Sfx.attune();
+          });
+          break;
+        case 'streakBroken':
+          later(() => log('🕯 The streak gutters out — a turn passed without a spoken word.'));
+          break;
+        case 'wordCarried':
+          later(() => {
+            log(`📖 The unsolved ${ev.len}-rune word followed you here — your deduction stands.`);
+            toast('📖 The mystery word followed you — nothing is wasted', 2400);
+          });
+          break;
+        case 'blade':
+          later(() => log(`🗡 The inkblade drinks the spell — attack cards +${ev.total} this battle.`));
+          break;
+        case 'sewn':
+          later(() => log('🤐 Your lips strain against black thread. Nothing comes out.'));
+          break;
+        case 'forbiddenSpoken':
+          later(() => {
+            if (ev.correct) log(`🕯 <b style="color:var(--blood)">${ev.word}</b> — ${ev.name}. The tome itself recoils.`);
+            else log(`🤐 <b>${ev.word}</b> was not the word. The thread pulls tight.`);
+          }, 400);
+          break;
         case 'enemyHit':
           later(() => {
             const p = foeCenter(ev.idx);
@@ -1291,6 +1492,14 @@
   function finishBattle() {
     const b = battle;
     absorbBattleMeta(b);
+    run.savedWord = Engine.exportWord(b); // unsolved deduction follows the run
+    for (const w of b.stats.powerWordsCast) if (!run.powersCast.includes(w)) run.powersCast.push(w);
+    meta.bestStreak = Math.max(meta.bestStreak || 0, b.player.streak);
+    for (const sv of b.stats.solves) {
+      const d = meta.guessDist[sv.len] = meta.guessDist[sv.len] || {};
+      d[sv.guesses] = (d[sv.guesses] || 0) + 1;
+    }
+    SaveSystem.saveMeta(meta);
     run.maxHp = b.player.maxHp;
     run.gold += b.goldGained;
     if (b.won) {
@@ -1307,8 +1516,9 @@
     const rng = runRng();
     const diff = ClassData.DIFFICULTIES[run.difficulty];
     const kind = node.type === 'boss' ? 'boss' : node.type === 'elite' ? 'elite' : 'battle';
-    let gold = EnemyData.goldReward(run.world, kind, diff, rng);
+    let gold = EnemyData.goldReward(run.world, kind, diff, rng, run.map && run.map.risky);
     gold = Math.round(gold * (1 + RelicData.mod(run.relics, 'aurumPct') / 100));
+    gold = Math.round(gold * (1 + (condMod().goldPct || 0) / 100));
     run.gold += gold;
     const RR = Engine.RUN_RULES;
     const healPct = kind === 'boss' ? RR.bossHealMissingPct : RR.postBattleHealMissingPct;
@@ -1344,26 +1554,126 @@
 
   function afterBattleContinue() {
     const pos = run.pos;
-    if (pos && pos.stage === 6) {
-      if (run.world >= 5) { winRun(); return; }
-      run.world++;
-      toast(`📖 The page turns… World ${run.world}: ${EnemyData.WORLDS[run.world - 1].name}`, 3400);
-      meta.bestWorld = Math.max(meta.bestWorld, run.world);
-      SaveSystem.saveMeta(meta);
-      newWorldMap();
+    const finalStage = run.map.columns.length;
+    if (pos && pos.stage === finalStage) {
+      if (run.worldId === 'unwritten') { trueEndingRun(); return; }
+      if (run.spiral && run.world >= 6) { spiralOnward(); return; }
+      if (run.world >= 5) { fifthBossFelled(); return; }
+      worldChoiceModal(run.world + 1);
+      return;
     }
     SaveSystem.saveRun(run);
     flipTo(renderMap);
   }
 
-  function winRun() {
-    const diff = run.difficulty;
-    meta.totalWins++;
-    meta.winsByDifficulty[diff] = (meta.winsByDifficulty[diff] || 0) + 1;
-    meta.bestDifficultyWin = Math.max(meta.bestDifficultyWin, diff);
-    meta.classWins[run.classId] = (meta.classWins[run.classId] || 0) + 1;
+  function worldChoiceModal(nextTier) {
+    const variants = EnemyData.variantsForTier(nextTier);
+    const m = overlayPanel(`<div class="rune-title">📖 The Page Turns</div>
+      <p class="small center">Two chapters lie ahead. Choose which world the tome opens to.</p>`);
+    const row = el('div', 'world-choice-row');
+    variants.forEach(w => {
+      const card = el('div', 'world-card' + (w.risky ? ' risky' : ''), `
+        <div class="wc-icon">${w.icon}</div>
+        <b>${w.name}</b>
+        <div class="small"><i>${w.blurb}</i></div>
+        ${w.risky ? '<div class="small" style="color:var(--blood)"><b>RISKIER</b> — more elites, richer spoils</div>' : '<div class="small">The storied road.</div>'}`);
+      card.onclick = () => {
+        m.close();
+        run.world = nextTier;
+        run.worldId = w.id;
+        meta.bestWorld = Math.max(meta.bestWorld, run.world);
+        SaveSystem.saveMeta(meta);
+        newWorldMap();
+        toast(`📖 World ${run.world}: ${w.name}`, 3000);
+        Sfx.flip();
+        SaveSystem.saveRun(run);
+        flipTo(renderMap);
+      };
+      row.appendChild(card);
+    });
+    m.p.appendChild(row);
+  }
+
+  function fifthBossFelled() {
+    // record the victory once, then offer what lies beyond
+    if (!run.wonRecorded && !run.spiral) {
+      run.wonRecorded = true;
+      meta.totalWins++;
+      meta.winsByDifficulty[run.difficulty] = (meta.winsByDifficulty[run.difficulty] || 0) + 1;
+      meta.bestDifficultyWin = Math.max(meta.bestDifficultyWin, run.difficulty);
+      meta.classWins[run.classId] = (meta.classWins[run.classId] || 0) + 1;
+      SaveSystem.saveMeta(meta);
+    }
+    const allPowers = run.powersCast.length >= 6;
+    const m = overlayPanel(`<div class="rune-title">👑 THE AUTHOR falls</div>
+      <p class="small center" style="max-width:420px">The fifth world closes. The victory is yours — it is already written.</p>
+      ${allPowers ? `<p class="center" style="color:var(--arcane)"><b>⚡ All six Words of Power have been spoken this run.<br>Behind the last page… something tears open.</b></p>` : ''}`);
+    const row = el('div', 'center');
+    row.style.cssText = 'display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:12px';
+    if (allPowers) {
+      const un = el('button', 'arcane', '⬜ Enter THE UNWRITTEN');
+      un.onclick = () => {
+        m.close();
+        run.world = 6; run.worldId = 'unwritten';
+        newWorldMap();
+        Sfx.stinger();
+        toast('⬜ The page after the last page. Three stages. No mercy.', 4000);
+        SaveSystem.saveRun(run);
+        flipTo(renderMap);
+      };
+      row.appendChild(un);
+    }
+    const spiral = el('button', '', '🌀 Descend the Spiral (World 6+)');
+    spiral.onclick = () => {
+      m.close();
+      run.spiral = true;
+      const variants = EnemyData.WORLDS.filter(w => !w.secret && w.tier >= 3);
+      const w = variants[Math.floor(runRng()() * variants.length)];
+      run.world = 6; run.worldId = w.id;
+      meta.deepestSpiral = Math.max(meta.deepestSpiral || 0, run.world);
+      SaveSystem.saveMeta(meta);
+      newWorldMap();
+      toast(`🌀 Spiral ${run.world - 5} — ${w.name}, compounding. See how deep the ink goes.`, 3600);
+      SaveSystem.saveRun(run);
+      flipTo(renderMap);
+    };
+    row.appendChild(spiral);
+    const done = el('button', 'ghost', '📕 Close the Tome (Victory)');
+    done.onclick = () => { m.close(); renderGameOver(true); };
+    row.appendChild(done);
+    m.p.appendChild(row);
+  }
+
+  function spiralOnward() {
+    const m = overlayPanel(`<div class="rune-title">🌀 Spiral ${run.world - 5} cleared</div>
+      <p class="small center">Deepest descent: World ${Math.max(meta.deepestSpiral || 0, run.world)}. The next coil is crueler.</p>`);
+    const row = el('div', 'center');
+    row.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:12px';
+    const go = el('button', 'arcane', '🌀 Deeper');
+    go.onclick = () => { m.close(); spiralContinue(); };
+    row.appendChild(go);
+    const stop = el('button', 'ghost', '📕 Enough — close the tome');
+    stop.onclick = () => { m.close(); renderGameOver(true); };
+    row.appendChild(stop);
+    m.p.appendChild(row);
+  }
+
+  function trueEndingRun() {
+    meta.trueEnding = true;
     SaveSystem.saveMeta(meta);
-    renderGameOver(true);
+    renderGameOver(true, true);
+  }
+
+  function spiralContinue() {
+    const variants = EnemyData.WORLDS.filter(w => !w.secret && w.tier >= 3);
+    const w = variants[Math.floor(runRng()() * variants.length)];
+    run.world++; run.worldId = w.id;
+    meta.deepestSpiral = Math.max(meta.deepestSpiral || 0, run.world);
+    SaveSystem.saveMeta(meta);
+    newWorldMap();
+    toast(`🌀 Spiral ${run.world - 5} — ${w.name}. The ink thickens.`, 3400);
+    SaveSystem.saveRun(run);
+    flipTo(renderMap);
   }
 
   function shareText(won) {
@@ -1378,9 +1688,10 @@
     return `📖 Lexicon Arcanum — Daily ${run.daily}\n${prog} ${won ? 'VICTORIOUS' : `fell in W${run.world}-${run.pos ? run.pos.stage : 1}`}\n${cls.icon} ${cls.name} · 📜 ${meta.learnedWords.length}/180 · 🏺 ${run.relics.length} relics`;
   }
 
-  function renderGameOver(won) {
+  function renderGameOver(won, trueEnd) {
     const wasDaily = run && run.daily;
     const share = wasDaily ? shareText(won) : null;
+    const spiralDepth = run && run.spiral ? run.world - 5 : 0;
     battle = null;
     setBattleChrome(false);
     FX.setAmbient(null);
@@ -1389,12 +1700,14 @@
       screen = 'gameover'; bookmarks([]);
       $L.innerHTML = `
         <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center">
-          <div style="font-size:70px">${won ? '👑' : '🕯️'}</div>
-          <h1 style="font-size:30px">${won ? 'The Final Word Is Yours' : 'The Candle Gutters'}</h1>
+          <div style="font-size:70px">${trueEnd ? '⬜' : won ? '👑' : '🕯️'}</div>
+          <h1 style="font-size:30px">${trueEnd ? 'THE UNWRITTEN, WRITTEN' : won ? 'The Final Word Is Yours' : 'The Candle Gutters'}</h1>
           <p class="small" style="max-width:300px;margin-top:10px">
-            ${won ? 'You have silenced THE AUTHOR and closed the fifth world. New powers stir in the Lexicon…'
-                  : 'Your body fails — but words, once learned, are never unlearned. The grimoire remembers.'}
+            ${trueEnd ? 'You walked past the last page and wrote your name on what you found there. There is no greater ending. There is no ending at all, now.'
+              : won ? 'You have silenced THE AUTHOR and closed the fifth world. New powers stir in the Lexicon…'
+              : 'Your body fails — but words, once learned, are never unlearned. The grimoire remembers.'}
           </p>
+          ${spiralDepth ? `<p class="small">🌀 Spiral depth: <b>${spiralDepth}</b></p>` : ''}
         </div>`;
       $R.innerHTML = '';
       const right = el('div', '', `
@@ -1453,9 +1766,11 @@
     run.deck.forEach((c, i) => {
       const def = CardData.BY_ID[c.id];
       const fx = c.upgraded ? CardData.upgradedFx(def.fx) : def.fx;
+      const inscribedTag = c.inscribed ? ` <span style="color:var(--blood)">· ${c.inscribed}</span>` : '';
+      const shownFx = c.inscribed ? Engine.makeCard(c.id, c.upgraded, c.inscribed).fx : fx;
       const row = el('div', 'forge-card-row', `
-        <span class="fname">${def.name}${c.upgraded ? ' <span style="color:var(--arcane)">+</span>' : ''} <span class="small">${def.cost}⚡</span></span>
-        <span class="fdesc">${CardData.describeFx(fx)}</span>`);
+        <span class="fname">${def.name}${c.upgraded ? ' <span style="color:var(--arcane)">+</span>' : ''}${inscribedTag} <span class="small">${def.cost}⚡</span></span>
+        <span class="fdesc">${CardData.describeFx(shownFx)}</span>`);
       if (!c.upgraded) {
         const up = el('button', 'small-btn', `⚒️ ${upCost}`);
         up.disabled = run.gold < upCost;
@@ -1469,6 +1784,14 @@
           m.close(); renderForgeOverlay();
         };
         row.appendChild(up);
+      }
+      if (!c.inscribed && meta.learnedWords.length) {
+        const insCost = 60 + 30 * run.inscriptions;
+        const ins = el('button', 'small-btn', `🪶 ${insCost}`);
+        ins.disabled = run.gold < insCost;
+        ins.title = 'Inscribe a learned word onto this card — it gains a fragment of the spell, permanently';
+        ins.onclick = () => { m.close(); inscribeModal(c, i); };
+        row.appendChild(ins);
       }
       if (run.deck.length > 5) {
         const rm = el('button', 'small-btn ghost', `🗑 ${rmCost}`);
@@ -1488,6 +1811,79 @@
     m.p.appendChild(list);
     const done = el('button', '', 'Bank the coals');
     done.style.cssText = 'display:block;margin:12px auto 0';
+    done.onclick = () => { m.close(); renderMap(); };
+    m.p.appendChild(done);
+  }
+
+  /* ---------- word inscription: bind a learned word onto a card ---------- */
+  function inscribeModal(deckCard, deckIdx) {
+    const learned = meta.learnedWords.slice().sort((a, z) => a.length - z.length || (a < z ? -1 : 1));
+    const insCost = 60 + 30 * run.inscriptions;
+    const def = CardData.BY_ID[deckCard.id];
+    const m = overlayPanel(`<div class="rune-title">🪶 Inscribe ${def.name}</div>
+      <p class="small center">Bind a learned word onto this card for <b>🪙 ${insCost}</b>.
+      The card permanently carries <b>40%</b> of the word's spell.</p>`);
+    const list = el('div');
+    list.style.cssText = 'max-height:400px;overflow-y:auto';
+    learned.forEach(w => {
+      const preview = Engine.makeCard(deckCard.id, deckCard.upgraded, w);
+      const spell = WordData.SPELLS[w];
+      const row = el('div', 'spell-row clickable', `
+        <span>${spell.icon}</span><span class="sw">${w}</span>
+        <span class="sd">→ ${CardData.describeFx(preview.fx)}</span>`);
+      row.onclick = () => {
+        if (run.gold < insCost) { toast('Not enough aurum'); return; }
+        run.gold -= insCost;
+        run.inscriptions++;
+        run.deck[deckIdx].inscribed = w;
+        SaveSystem.saveRun(run);
+        Sfx.power();
+        FX.runes(window.innerWidth / 2, window.innerHeight / 2, w, { color: '#c9a227' });
+        toast(`🪶 <b>${def.name} · ${w}</b> — the word rides the card now`, 3600);
+        m.close(); renderForgeOverlay();
+      };
+      list.appendChild(row);
+    });
+    m.p.appendChild(list);
+    const cancel = el('button', 'ghost small-btn', 'Leave it bare');
+    cancel.style.cssText = 'display:block;margin:10px auto 0';
+    cancel.onclick = () => { m.close(); renderForgeOverlay(); };
+    m.p.appendChild(cancel);
+  }
+
+  /* ============================================================
+   * PREPARED SIGILS — slot up to 3 learned words per battle
+   * ============================================================ */
+  function renderSigilsOverlay() {
+    const learned = meta.learnedWords.slice().sort((a, z) => a.length - z.length || (a < z ? -1 : 1));
+    if (!learned.length) { toast('Your grimoire holds no words to prepare'); return; }
+    const m = overlayPanel(`<div class="rune-title">🪧 Prepared Sigils</div>
+      <p class="small center" style="max-width:420px">Slot up to <b>3</b> engraved words. Prepared words resonate <b>+20%</b> and reveal a rune when served as the mystery word.</p>`);
+    const slots = el('div', 'center small');
+    const refreshSlots = () => { slots.innerHTML = '<b>Slotted:</b> ' + (run.sigils.length ? run.sigils.join(' · ') : '—'); };
+    refreshSlots();
+    m.p.appendChild(slots);
+    const list = el('div');
+    list.style.cssText = 'max-height:380px;overflow-y:auto;margin-top:8px';
+    learned.forEach(w => {
+      const spell = WordData.SPELLS[w];
+      const row = el('div', 'spell-row clickable', `
+        <span>${spell.icon}</span><span class="sw">${w}${run.sigils.includes(w) ? ' 🪧' : ''}</span>
+        <span class="sd">${spell.name} — ${spell.desc}</span>`);
+      row.onclick = () => {
+        const i = run.sigils.indexOf(w);
+        if (i >= 0) run.sigils.splice(i, 1);
+        else if (run.sigils.length < 3) run.sigils.push(w);
+        else { toast('Only three sigils fit upon the slate'); return; }
+        Sfx.key();
+        SaveSystem.saveRun(run);
+        m.close(); renderSigilsOverlay();
+      };
+      list.appendChild(row);
+    });
+    m.p.appendChild(list);
+    const done = el('button', '', 'Seal the slate');
+    done.style.cssText = 'display:block;margin:10px auto 0';
     done.onclick = () => { m.close(); renderMap(); };
     m.p.appendChild(done);
   }
@@ -1538,6 +1934,14 @@
         <span class="sd">${unknownCount} word${unknownCount > 1 ? 's' : ''} of ${grimTab} runes still elude${unknownCount > 1 ? '' : 's'} you. Guess them in battle to engrave them forever.</span>`));
     }
     m.p.appendChild(list);
+    if (run && fragmentsOwned() > 0) {
+      const word = forbiddenDef().word;
+      const known = run.forbidden.fragments.map((have, fi) => have ? ArcanaData.FRAGMENT_SLOTS[fi] : []).flat();
+      const tmpl = word.split('').map((c, i) => known.includes(i) ? c : '·').join(' ');
+      m.p.appendChild(el('div', 'spell-row', `
+        <span>🕯</span><span class="sw" style="color:var(--blood);letter-spacing:0.15em">${tmpl}</span>
+        <span class="sd">${run.forbidden.mastered ? '<b>MASTERED.</b>' : run.forbidden.sewn ? '<b>It sewed your mouth shut.</b>' : run.forbidden.attempted ? 'The one attempt is spent.' : `A forbidden word — ${fragmentsOwned()}/4 fragments. One attempt. Choose the moment.`}</span>`));
+    }
     m.p.appendChild(el('p', 'small center',
       '🔔 Each guess has a 35% chance (boostable) to make a <b>known</b> mystery word fire itself from its engraving. ' +
       'Casting several words of one <b>school</b> in a battle triggers combos; ' +
@@ -1545,6 +1949,50 @@
       (discovered.size ? ' · ⚡ marks Words of Power (×2)' : '')));
     const done = el('button', '', 'Close the grimoire');
     done.style.cssText = 'display:block;margin:10px auto 0';
+    done.onclick = m.close;
+    m.p.appendChild(done);
+  }
+
+  /* ============================================================
+   * THE CHRONICLE — the tome remembers everything
+   * ============================================================ */
+  function renderChronicleOverlay() {
+    const m = overlayPanel('<div class="rune-title">📊 The Chronicle</div>');
+    m.p.style.minWidth = '560px';
+    const wins = Object.entries(meta.winsByDifficulty || {})
+      .map(([d, n]) => `${ClassData.DIFFICULTIES[d] ? ClassData.DIFFICULTIES[d].name : d}: ${n}`).join(' · ') || '—';
+    const classes = Object.entries(meta.classWins || {})
+      .map(([c, n]) => { const cd = ClassData.CLASSES.find(x => x.id === c); return `${cd ? cd.icon : ''}${n}`; }).join(' ') || '—';
+    m.p.appendChild(el('div', 'small', `
+      <div class="chron-grid">
+        <div>🏃 Runs</div><b>${meta.runsPlayed || 0}</b>
+        <div>🏆 Victories</div><b>${meta.totalWins || 0} <span class="small">(${wins})</span></b>
+        <div>🎓 Class wins</div><b>${classes}</b>
+        <div>📜 Words engraved</div><b>${meta.learnedWords.length} / 180</b>
+        <div>⚡ Words of Power</div><b>${meta.discoveredPower.length} / 6</b>
+        <div>✨ Spells cast</div><b>${meta.spellsCast || 0}</b>
+        <div>🌟 First-guess casts</div><b>${meta.firstGuessCasts || 0}</b>
+        <div>🔥 Longest streak</div><b>${meta.bestStreak || 0}</b>
+        <div>🌀 Deepest spiral</div><b>${meta.deepestSpiral ? 'World ' + meta.deepestSpiral : '—'}</b>
+        <div>🕯 Forbidden words mastered</div><b>${(meta.forbiddenMastered || []).length ? meta.forbiddenMastered.join(', ') : '—'}</b>
+        <div>⬜ The Unwritten</div><b>${meta.trueEnding ? 'WRITTEN.' : 'unfound'}</b>
+      </div>`));
+    // guess distribution per length
+    const dist = meta.guessDist || {};
+    const lens = Object.keys(dist).sort();
+    if (lens.length) {
+      m.p.appendChild(el('div', 'small center', '<br><b>SOLVES BY GUESS COUNT</b>'));
+      lens.forEach(len => {
+        const d = dist[len];
+        const total = Object.values(d).reduce((a, z) => a + z, 0);
+        const max = Math.max(...Object.values(d));
+        const rows = Object.keys(d).sort((a, z) => a - z).slice(0, 8).map(g =>
+          `<div class="dist-row"><span>${g}</span><div class="dist-bar" style="width:${Math.round(100 * d[g] / max)}%"></div><span>${d[g]}</span></div>`).join('');
+        m.p.appendChild(el('div', 'small', `<div style="margin-top:6px"><b>${len} runes</b> · ${total} solved${rows}</div>`));
+      });
+    }
+    const done = el('button', '', 'Close the chronicle');
+    done.style.cssText = 'display:block;margin:12px auto 0';
     done.onclick = m.close;
     m.p.appendChild(done);
   }

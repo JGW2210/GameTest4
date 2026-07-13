@@ -10,11 +10,12 @@
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = factory(require('./data/words.js'), require('./data/cards.js'),
-      require('./data/classes.js'), require('./data/enemies.js'), require('./data/relics.js'));
+      require('./data/classes.js'), require('./data/enemies.js'), require('./data/relics.js'),
+      require('./data/arcana.js'));
   } else {
-    root.Engine = factory(root.WordData, root.CardData, root.ClassData, root.EnemyData, root.RelicData);
+    root.Engine = factory(root.WordData, root.CardData, root.ClassData, root.EnemyData, root.RelicData, root.ArcanaData);
   }
-})(typeof self !== 'undefined' ? self : this, function (WordData, CardData, ClassData, EnemyData, RelicData) {
+})(typeof self !== 'undefined' ? self : this, function (WordData, CardData, ClassData, EnemyData, RelicData, ArcanaData) {
 
   /* ---------- deterministic RNG (mulberry32) ---------- */
   function makeRng(seed) {
@@ -46,19 +47,35 @@
    * CARD INSTANCES
    * ============================================================ */
   let instSeq = 1;
-  function makeCard(id, upgraded) {
+  const INSCRIBE_SCALE = 0.4; // inscribed cards carry 40% of the word's spell
+  const INSCRIBE_KEYS = ['dmg', 'block', 'heal', 'burn', 'poison', 'insight', 'str'];
+  function makeCard(id, upgraded, inscribed) {
     const base = CardData.BY_ID[id];
-    const fx = upgraded ? CardData.upgradedFx(base.fx) : Object.assign({}, base.fx);
-    return { inst: instSeq++, id, name: base.name + (upgraded ? ' +' : ''), rarity: base.rarity,
-             cost: base.cost, fx, upgraded: !!upgraded, flavor: base.flavor, token: false };
+    let fx = upgraded ? CardData.upgradedFx(base.fx) : Object.assign({}, base.fx);
+    let name = base.name + (upgraded ? ' +' : '');
+    if (inscribed && WordData.SPELLS[inscribed]) {
+      fx = Object.assign({}, fx);
+      const sfx = WordData.SPELLS[inscribed].fx;
+      for (const k of INSCRIBE_KEYS) {
+        if (sfx[k]) fx[k] = (fx[k] || 0) + Math.max(1, Math.round(sfx[k] * INSCRIBE_SCALE));
+      }
+      name += ' · ' + inscribed;
+    }
+    return { inst: instSeq++, id, name, rarity: base.rarity,
+             cost: base.cost, fx, upgraded: !!upgraded, inscribed: inscribed || null,
+             flavor: base.flavor, token: false };
   }
 
   /* ============================================================
    * BATTLE
    * ============================================================ */
-  function makeEnemy(id, world, stage, difficulty, scale) {
+  function makeEnemy(id, world, stage, difficulty, scale, condMod) {
     const e = EnemyData.ENEMIES[id];
     const st = EnemyData.scaledStats(id, world, stage, difficulty);
+    if (condMod) {
+      st.hp = Math.round(st.hp * (condMod.foeHp || 1));
+      st.dmgMult *= (condMod.foeDmg || 1);
+    }
     const hp = Math.max(6, Math.round(st.hp * (scale || 1)));
     return {
       id: e.id, name: e.name, icon: e.icon, boss: !!e.boss, elite: !!e.elite,
@@ -71,25 +88,28 @@
   function relicMod(b, key) { return RelicData.mod(b.relics, key); }
 
   function gainInsight(b, n) {
-    const amt = Math.max(0, Math.min(n, INSIGHT_CAP - b.player.insight));
+    const amt = Math.max(0, Math.min(n, b.insightCap - b.player.insight));
     b.player.insight += amt;
     return amt;
   }
 
   function createBattle(opts) {
-    // opts: { rng, cls, deck:[{id,upgraded}], hp, maxHp, enemyIds:[{id,scale}]|enemyId,
-    //         world, stage, difficulty, meta:{learnedWords:Set, discoveredPower:Set},
-    //         wordLen, insight, relics:[ids] }
+    // opts: { rng, cls, deck:[{id,upgraded,inscribed}], hp, maxHp,
+    //         enemyIds:[{id,scale}]|enemyId, world (tier), stage, difficulty,
+    //         meta:{learnedWords:Set, discoveredPower:Set}, wordLen, relics:[ids],
+    //         condition (page-condition mod), sigils:[words], savedWord, sewn }
     const rng = opts.rng;
     const relics = opts.relics || [];
+    const cond = opts.condition || {};
     let enemyDefs = opts.enemyIds;
     if (!enemyDefs && opts.enemyId) enemyDefs = [{ id: opts.enemyId, scale: 1 }];
-    const enemies = enemyDefs.map(d => makeEnemy(d.id, opts.world, opts.stage, opts.difficulty, d.scale));
+    const enemies = enemyDefs.map(d => makeEnemy(d.id, opts.world, opts.stage, opts.difficulty, d.scale, cond));
 
     const hasBig = enemies.some(e => e.elite || e.boss);
-    const maxEnergy = BASE_ENERGY
+    const maxEnergy = Math.max(1, BASE_ENERGY
       + RelicData.mod(relics, 'maxEnergy')
-      + (hasBig ? RelicData.mod(relics, 'maxEnergyVsElite') : 0);
+      + (hasBig ? RelicData.mod(relics, 'maxEnergyVsElite') : 0)
+      + (cond.energyBonus || 0));
 
     const b = {
       rng,
@@ -98,15 +118,25 @@
       world: opts.world, stage: opts.stage,
       meta: opts.meta,
       relics,
+      condition: cond,
+      sigils: opts.sigils || [],
+      insightCap: Math.max(3, (opts.cls.insightCap || INSIGHT_CAP) + (cond.insightCap || 0)),
+      handCap: Math.max(3, HAND_CAP + (cond.handCap || 0)),
+      resonantSchool: pick(rng, Object.keys(WordData.SCHOOLS)),
       player: {
         hp: opts.hp, maxHp: opts.maxHp, block: 0, str: 0, wardBonus: 0, thorns: 0,
         weak: 0, vuln: 0, regen: 0,
-        insight: 0, // fresh every battle, capped at INSIGHT_CAP
+        insight: 0, // fresh every battle, capped at insightCap
         guessCost: 1, // rises by 1 for the rest of the turn after each correct guess
-        resonance: 0.35 + RelicData.mod(relics, 'resonance') / 100,
+        resonance: (opts.cls.resonanceBase || 0.35)
+          + RelicData.mod(relics, 'resonance') / 100
+          + (cond.resonanceBonus || 0) / 100,
         freeGuesses: RelicData.mod(relics, 'freeGuessPerBattle'),
         energy: 0, maxEnergy,
         scryLeft: 0,
+        blade: 0, // Inkblade: grows with every spell cast, boosts attack cards
+        streak: 0, // consecutive turns with a correct guess
+        sewn: !!opts.sewn, // forbidden-word failure: no guessing, no spells
         echo: RelicData.mod(relics, 'echoFirstSpell'),
         twincast: 0, insightRune: 0,
         refundOnCorrect: false,
@@ -114,21 +144,55 @@
       },
       enemies,
       target: 0,
-      drawPile: shuffle(rng, opts.deck.map(c => makeCard(c.id, c.upgraded))),
+      drawPile: shuffle(rng, opts.deck.map(c => makeCard(c.id, c.upgraded, c.inscribed))),
       hand: [], discard: [], exhausted: [],
       wordLen: opts.wordLen,
       word: null,
+      _savedWord: opts.savedWord || null,
+      _correctThisTurn: false,
       turn: 0, over: false, won: false,
       goldGained: 0, maxHpGained: 0,
       schoolCasts: {}, lengthsCast: [],
       spellsThisBattle: 0,
-      stats: { spellsCast: 0, firstGuessCasts: 0, autoCasts: 0, wordsLearned: [], powerDiscovered: [] },
+      stats: { spellsCast: 0, firstGuessCasts: 0, autoCasts: 0, wordsLearned: [], powerDiscovered: [], powerWordsCast: [], solves: [] },
       events: [],
     };
     // battle-start relics
     if (RelicData.mod(relics, 'strStart')) b.player.str += RelicData.mod(relics, 'strStart');
     if (RelicData.mod(relics, 'thornsStart')) b.player.thorns += RelicData.mod(relics, 'thornsStart');
     return b;
+  }
+
+  /* Export the unsolved mystery word so it can follow the run to the next
+     battle — no deduction is ever wasted. */
+  function exportWord(b) {
+    const w = b.word;
+    if (!w || !(w.guesses.length || w.revealed.length || w.knownAbsent.length || w.vowelInfo)) return null;
+    return {
+      answer: w.answer, len: w.len,
+      guesses: w.guesses.map(g => ({ word: g.word, marks: g.marks.slice() })),
+      revealed: w.revealed.map(r => ({ i: r.i, c: r.c, free: r.free })),
+      knownAbsent: w.knownAbsent.slice(),
+      vowelInfo: w.vowelInfo ? Object.assign({}, w.vowelInfo) : null,
+    };
+  }
+
+  /* Learned words consistent with everything known about the current mystery
+     word — powers the tap-to-guess candidate chips. */
+  function consistentLearned(b) {
+    const w = b.word;
+    if (!w) return [];
+    const pool = WordData.POOLS[w.len].filter(x => b.meta.learnedWords.has(x));
+    return pool.filter(x => {
+      if (w.guesses.some(g => g.word === x)) return false;
+      if (!w.revealed.every(r => x[r.i] === r.c)) return false;
+      if (w.knownAbsent.some(ch => x.includes(ch))) return false;
+      for (const g of w.guesses) {
+        const m = WordData.judgeGuess(g.word, x);
+        for (let i = 0; i < m.length; i++) if (m[i] !== g.marks[i]) return false;
+      }
+      return true;
+    });
   }
 
   function emit(b, ev) { b.events.push(ev); return ev; }
@@ -167,10 +231,11 @@
       served: true,
     };
     let freeLetters = 0;
-    if (everyKnown) {
-      freeLetters = Math.min(len - 2, 1 + relicMod(b, 'masteryReveal'));
-      for (let i = 0; i < freeLetters; i++) revealLetter(b, true);
-    }
+    if (everyKnown) freeLetters += 1 + relicMod(b, 'masteryReveal');
+    if (b.condition && b.condition.wordFreeReveal) freeLetters += b.condition.wordFreeReveal;
+    if (b.sigils && b.sigils.includes(answer)) freeLetters += 1; // prepared sigil
+    freeLetters = Math.min(len - 2, freeLetters);
+    for (let i = 0; i < freeLetters; i++) revealLetter(b, true);
     // relic assistance on every fresh word
     const prune = relicMod(b, 'pruneOnServe');
     if (prune) pruneLetters(b, prune);
@@ -181,9 +246,10 @@
   /* Engraving resonance: rolled once after each guess. If the (possibly just
    * served) mystery word is engraved in the grimoire, it may fire itself. */
   function rollResonance(b) {
-    if (b.over || !b.word) return;
+    if (b.over || !b.word || b.player.sewn) return;
     if (!b.meta.learnedWords.has(b.word.answer)) return;
-    if (b.rng() >= b.player.resonance) return;
+    const sigilBonus = b.sigils && b.sigils.includes(b.word.answer) ? 0.2 : 0;
+    if (b.rng() >= b.player.resonance + sigilBonus) return;
     const w = b.word.answer;
     emit(b, { type: 'autocast', word: w });
     b.stats.autoCasts++;
@@ -229,7 +295,10 @@
   }
 
   /* ---------- scry: free deduction, once per turn (+relics) ---------- */
-  function canScry(b) { return !b.over && b.word && b.player.scryLeft > 0; }
+  function canScry(b) {
+    if (b.condition && b.condition.noScry) return false;
+    return !b.over && b.word && b.player.scryLeft > 0;
+  }
   function scry(b, letter) {
     if (!canScry(b)) return { ok: false };
     letter = String(letter || '').toUpperCase();
@@ -364,6 +433,15 @@
 
     if (fx.dmg) playerDealDamage(b, Math.round(fx.dmg * mult) + relicMod(b, 'spellDmg'), fx.hits || 1, 'spell',
       { aoe, execute: fx.execute || 0 });
+    if (fx.nihil) { // The Great Nothing: erase a fraction of every foe's vitality
+      for (const e of alive(b)) {
+        const loss = Math.floor(e.hp * fx.nihil);
+        e.hp -= loss;
+        emit(b, { type: 'enemyHit', amount: loss, hpLoss: loss, tag: 'spell', idx: b.enemies.indexOf(e) });
+        if (e.hp <= 0) { e.hp = 0; emit(b, { type: 'enemyDown', idx: b.enemies.indexOf(e), name: e.name }); }
+      }
+      checkBattleEnd(b);
+    }
     if (fx.block) gainBlock(b, Math.round(fx.block * mult));
     if (fx.heal) healPlayer(b, Math.round(fx.heal * mult) + (fx._healBonus || 0));
     else if (fx._healBonus) healPlayer(b, fx._healBonus);
@@ -397,6 +475,7 @@
 
   function castSpell(b, word, opts) {
     opts = opts || {};
+    if (b.player.sewn) { emit(b, { type: 'sewn' }); return null; }
     const spell = WordData.SPELLS[word];
     if (!spell) return null;
     let mult = 1;
@@ -404,6 +483,8 @@
     if (opts.firstGuess) mult *= FIRST_GUESS_MULT;
     if (isPower) mult *= POWER_MULT;
     if (opts.tomeMult) mult *= opts.tomeMult;
+    if (spell.school === b.resonantSchool) mult *= 1.3; // battle's resonant school
+    if (b.player.streak >= 4) mult *= 1.15;             // hot streak
     if (b.player.echo) { mult *= 1 + b.player.echo / 100; b.player.echo = 0; }
     const casts = b.player.twincast > 0 ? 2 : 1;
     if (b.player.twincast > 0) b.player.twincast--;
@@ -425,6 +506,8 @@
     for (let c = 0; c < casts; c++) { applySpellFx(b, fx, mult); if (b.over) break; }
     b.stats.spellsCast++;
     b.spellsThisBattle++;
+    if (isPower && !b.stats.powerWordsCast.includes(word)) b.stats.powerWordsCast.push(word);
+    if (b.cls.bladeCharge) { b.player.blade += b.cls.bladeCharge; emit(b, { type: 'blade', total: b.player.blade }); }
     noteAttunement(b, spell.len);
 
     // relic pulses
@@ -453,11 +536,13 @@
    * Every CORRECT guess raises the cost by 1 for the rest of the turn —
    * chaining casts in one turn gets expensive fast. Resets at turn start. */
   function canGuess(b) {
+    if (b.player.sewn) return false;
     return !!b.word && !b.over && (b.player.freeGuesses > 0 || b.player.insight >= b.player.guessCost);
   }
 
   function guess(b, raw) {
     const w = b.word;
+    if (b.player.sewn) return { ok: false, reason: 'sewn' };
     if (!w || b.over) return { ok: false, reason: 'no-word' };
     const g = String(raw || '').toUpperCase().replace(/[^A-Z]/g, '');
     if (g.length !== w.len) return { ok: false, reason: 'length' };
@@ -484,8 +569,20 @@
         emit(b, { type: 'wordLearned', word: g });
       }
       if (b.player.refundOnCorrect) gainInsight(b, 1);
+      b.stats.solves.push({ len: w.len, guesses: w.guesses.length });
       b.player.guessCost++;
       emit(b, { type: 'guessCostUp', cost: b.player.guessCost });
+      // streak: first correct guess of the turn extends the chain
+      if (!b._correctThisTurn) {
+        b._correctThisTurn = true;
+        b.player.streak++;
+        const tier = b.player.streak;
+        if (tier === 1) { /* the chain begins */ }
+        else if (tier === 2) gainInsight(b, 1);
+        else if (tier === 3) { b.player.energy += 1; emit(b, { type: 'energy', amount: 1 }); }
+        else if (tier === 4) b.player.scryLeft += 1;
+        emit(b, { type: 'streak', streak: tier });
+      }
       castSpell(b, g, { firstGuess });
       if (!b.over) serveWord(b, b.wordLen);
       rollResonance(b);
@@ -500,8 +597,31 @@
     serveWord(b, len);
   }
 
+  /* ---------- the Forbidden Word ----------
+   * One attempt per run. Correct: the forbidden spell detonates and is
+   * mastered. Wrong: the tome sews your mouth shut for the rest of the run.
+   * Run-level state (fragments, attempted, sewn) lives with the caller. */
+  function speakForbidden(b, spoken, forbiddenDef) {
+    spoken = String(spoken || '').toUpperCase().replace(/[^A-Z]/g, '');
+    const correct = spoken === forbiddenDef.word;
+    emit(b, { type: 'forbiddenSpoken', word: spoken, correct, name: forbiddenDef.name });
+    if (correct) {
+      const multRef = { mult: 1 };
+      applySpellFx(b, forbiddenDef.fx, multRef.mult);
+      b.stats.spellsCast++;
+    } else {
+      b.player.sewn = true;
+    }
+    return { correct };
+  }
+
   /* ---------- playing cards ---------- */
-  function canAfford(b, card) { return b.player.energy >= card.cost; }
+  function effectiveCost(b, card) {
+    let c = card.cost;
+    if (b.condition && b.condition.costCap != null) c = Math.min(c, b.condition.costCap);
+    return c;
+  }
+  function canAfford(b, card) { return b.player.energy >= effectiveCost(b, card); }
 
   function playCard(b, inst, choice) {
     if (b.over) return { ok: false, reason: 'over' };
@@ -509,29 +629,31 @@
     if (idx < 0) return { ok: false, reason: 'not-in-hand' };
     const card = b.hand[idx];
     const fx = card.fx;
-    if (b.player.energy < card.cost) return { ok: false, reason: 'energy' };
+    const cost = effectiveCost(b, card);
+    if (b.player.energy < cost) return { ok: false, reason: 'energy' };
 
     if (choice && choice.targetIdx != null) setTarget(b, choice.targetIdx);
 
     if (fx.castTome) {
+      if (b.player.sewn) return { ok: false, reason: 'sewn' };
       const word = choice && choice.tomeWord;
       if (!word || !b.meta.learnedWords.has(word)) return { ok: false, reason: 'need-word' };
-      const cost = Math.max(0, word.length - 4 - (fx.castDiscount || 0) - b.player.castDiscount);
-      if (b.player.insight < cost) return { ok: false, reason: 'insight' };
-      b.player.energy -= card.cost;
-      b.player.insight -= cost;
+      const tcost = Math.max(0, word.length - 4 - (fx.castDiscount || 0) - b.player.castDiscount);
+      if (b.player.insight < tcost) return { ok: false, reason: 'insight' };
+      b.player.energy -= cost;
+      b.player.insight -= tcost;
       emit(b, { type: 'cardPlayed', card: cardView(card) });
       castSpell(b, word, { tomeMult: fx.castTome * (b.cls.tomeMult || 1) });
       afterPlay(b, idx, card);
       return { ok: true };
     }
 
-    b.player.energy -= card.cost;
+    b.player.energy -= cost;
     emit(b, { type: 'cardPlayed', card: cardView(card) });
 
     if (fx.selfDmg) damagePlayer(b, fx.selfDmg, 'self');
     if (fx.dmg || fx.dmgPerLearned || fx.dmgPerInsight || fx.dmgFromBlock || fx.dmgPerAttuned) {
-      let base = fx.dmg || 0;
+      let base = (fx.dmg || 0) + b.player.blade; // Inkblade charge rides attacks
       if (fx.dmgPerLearned) base += fx.dmgPerLearned * b.meta.learnedWords.size;
       if (fx.dmgPerInsight) base += fx.dmgPerInsight * b.player.insight;
       if (fx.dmgFromBlock) base += b.player.block;
@@ -598,7 +720,7 @@
   /* ---------- turn structure ---------- */
   function drawCards(b, n) {
     for (let i = 0; i < n; i++) {
-      if (b.hand.length >= HAND_CAP) return;
+      if (b.hand.length >= b.handCap) return;
       if (!b.drawPile.length) {
         if (!b.discard.length) return;
         b.drawPile = shuffle(b.rng, b.discard);
@@ -617,21 +739,37 @@
     b.player.energy = b.player.maxEnergy;
     b.player.guessCost = 1; // cast-chain surcharge resets each turn
     b.player.scryLeft = 1 + relicMod(b, 'scryPerTurn');
+    if (b.turn > 1 && !b._correctThisTurn && b.player.streak) {
+      b.player.streak = 0;
+      emit(b, { type: 'streakBroken' });
+    }
+    b._correctThisTurn = false;
+    if (b.condition && b.condition.freeGuessPerTurn) b.player.freeGuesses += b.condition.freeGuessPerTurn;
     const gain = b.cls.freeInsight + b.player.insightRune + relicMod(b, 'insightPerTurn');
     if (gain) { gainInsight(b, gain); emit(b, { type: 'insight', amount: gain, free: true }); }
     const bpt = relicMod(b, 'blockPerTurn');
     if (bpt) gainBlock(b, bpt);
     if (b.player.regen) healPlayer(b, b.player.regen);
-    let drawN = b.cls.draw;
+    let drawN = b.cls.draw + ((b.condition && b.condition.drawBonus) || 0);
     if (b.turn === 1) drawN += relicMod(b, 'drawFirstTurn');
     drawCards(b, drawN);
-    if (b.cls.alwaysDrawsCastTome && !b.hand.some(c => c.fx.castTome) && b.hand.length < HAND_CAP) {
+    if (b.cls.alwaysDrawsCastTome && !b.hand.some(c => c.fx.castTome) && b.hand.length < b.handCap) {
       const t = makeCard('casttome', false);
       t.token = true; t.name = 'Conjured Tome';
       b.hand.push(t);
       emit(b, { type: 'draw', card: cardView(t) });
     }
-    if (!b.word) serveWord(b, b.wordLen);
+    if (!b.word) {
+      // an unsolved word from the previous battle follows the run
+      if (b.turn === 1 && b._savedWord) {
+        b.word = b._savedWord;
+        b.wordLen = b._savedWord.len;
+        b._savedWord = null;
+        emit(b, { type: 'wordCarried', len: b.word.len });
+      } else {
+        serveWord(b, b.wordLen);
+      }
+    }
     if (b.turn === 1 && relicMod(b, 'revealOnStart')) revealLetter(b);
     emit(b, { type: 'turnStart', turn: b.turn });
   }
@@ -718,11 +856,13 @@
           if (m.weak) b.player.weak += m.weak;
           if (m.vuln) b.player.vuln += m.vuln;
           break;
-        case 'leech':
-          b.player.insight = Math.max(0, b.player.insight - m.insight);
+        case 'leech': {
+          const drain = m.insight + ((b.condition && b.condition.leechBonus) || 0);
+          b.player.insight = Math.max(0, b.player.insight - drain);
           if (m.n) enemyAttack(b, e, m.n, 1);
-          emit(b, { type: 'leeched', amount: m.insight });
+          emit(b, { type: 'leeched', amount: drain });
           break;
+        }
         case 'smolder':
           if (m.n) enemyAttack(b, e, m.n, 1);
           break;
@@ -758,26 +898,30 @@
    * ============================================================ */
   const NODE_TYPES = { BATTLE: 'battle', ELITE: 'elite', TREASURE: 'treasure', SHRINE: 'shrine', EVENT: 'event', BOSS: 'boss' };
 
-  function encounterFor(rng, world, type, wdata) {
-    // Returns [{id, scale}] — multi-enemy packs appear from world 2 on.
+  function encounterFor(rng, tier, type, wdata) {
+    // Returns [{id, scale}] — multi-enemy packs appear from tier 2 on.
     if (type === NODE_TYPES.BOSS) return [{ id: wdata.boss, scale: 1 }];
     if (type === NODE_TYPES.ELITE) return [{ id: pick(rng, wdata.elites), scale: 1 }];
     const r = rng();
-    if (world >= 4 && r < 0.18) {
+    if (tier >= 4 && r < 0.18) {
       return [0, 1, 2].map(() => ({ id: pick(rng, wdata.normals), scale: 0.52 }));
     }
-    if (world >= 2 && r < 0.42) {
+    if (tier >= 2 && r < 0.42) {
       return [0, 1].map(() => ({ id: pick(rng, wdata.normals), scale: 0.68 }));
     }
     return [{ id: pick(rng, wdata.normals), scale: 1 }];
   }
 
-  function generateWorldMap(rng, world) {
+  function generateWorldMap(rng, tier, worldId) {
     const columns = [];
-    const wdata = EnemyData.BY_WORLD[world];
-    for (let stage = 1; stage <= 6; stage++) {
-      if (stage === 6) {
-        columns.push([{ stage, idx: 0, type: NODE_TYPES.BOSS, enemies: encounterFor(rng, world, NODE_TYPES.BOSS, wdata), next: [] }]);
+    const world = EnemyData.WORLD_BY_ID[worldId || 'woods'] || EnemyData.WORLDS[0];
+    const wdata = EnemyData.BY_WORLD[world.id];
+    const risky = !!world.risky;
+    const stages = world.secret ? 3 : 6; // THE UNWRITTEN is short and lethal
+    const eliteChance = risky ? 0.26 : 0.16;
+    for (let stage = 1; stage <= stages; stage++) {
+      if (stage === stages) {
+        columns.push([{ stage, idx: 0, type: NODE_TYPES.BOSS, enemies: encounterFor(rng, tier, NODE_TYPES.BOSS, wdata), next: [] }]);
         continue;
       }
       const count = stage === 1 ? 2 : 2 + Math.floor(rng() * 2);
@@ -786,24 +930,24 @@
         let type = NODE_TYPES.BATTLE;
         if (stage > 1) {
           const r = rng();
-          if (r < 0.16) type = NODE_TYPES.ELITE;
-          else if (r < 0.30) type = NODE_TYPES.TREASURE;
-          else if (r < 0.42) type = NODE_TYPES.SHRINE;
-          else if (r < 0.54) type = NODE_TYPES.EVENT;
+          if (r < eliteChance) type = NODE_TYPES.ELITE;
+          else if (r < eliteChance + 0.14) type = NODE_TYPES.TREASURE;
+          else if (r < eliteChance + 0.26) type = NODE_TYPES.SHRINE;
+          else if (r < eliteChance + 0.38) type = NODE_TYPES.EVENT;
         }
         const node = { stage, idx: i, type, next: [] };
         if (type === NODE_TYPES.BATTLE || type === NODE_TYPES.ELITE) {
-          node.enemies = encounterFor(rng, world, type, wdata);
+          node.enemies = encounterFor(rng, tier, type, wdata);
         }
         col.push(node);
       }
       if (!col.some(n => n.type === NODE_TYPES.BATTLE || n.type === NODE_TYPES.ELITE)) {
         const n = pick(rng, col);
-        n.type = NODE_TYPES.BATTLE; n.enemies = encounterFor(rng, world, NODE_TYPES.BATTLE, wdata);
+        n.type = NODE_TYPES.BATTLE; n.enemies = encounterFor(rng, tier, NODE_TYPES.BATTLE, wdata);
       }
       columns.push(col);
     }
-    for (let s = 0; s < 5; s++) {
+    for (let s = 0; s < columns.length - 1; s++) {
       const cur = columns[s], nxt = columns[s + 1];
       const covered = new Set();
       cur.forEach((node, i) => {
@@ -821,7 +965,7 @@
       });
       cur.forEach(n => { n.next = Array.from(new Set(n.next)).sort((a, z) => a - z); });
     }
-    return { world, columns };
+    return { world: tier, worldId: world.id, risky, columns };
   }
 
   // Aetheria (red) cards are only rollable from World 3 on Adept+ difficulty.
@@ -875,9 +1019,10 @@
     makeRng, pick, shuffle,
     HAND_CAP, BASE_ENERGY, INSIGHT_CAP, FIRST_GUESS_MULT, POWER_MULT, ATTUNE_TIERS,
     makeCard, cardView, createBattle, startPlayerTurn, endTurn,
-    playCard, canAfford, guess, canGuess, changeWordLength, serveWord,
+    playCard, canAfford, effectiveCost, guess, canGuess, changeWordLength, serveWord,
     scry, canScry, setTarget, targetEnemy, alive,
     enemyIntent, describeIntent, drainEvents, castSpell,
+    exportWord, consistentLearned, speakForbidden,
     NODE_TYPES, generateWorldMap, encounterFor, rollCardRewards, aetheriaEligible, FORGE, RUN_RULES,
     allLearned,
   };
