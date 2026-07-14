@@ -30,6 +30,9 @@
  *   - each element has a secret third spelling of its root (FLA, RIM,
  *     SAX...) — words woven from it carry ×1.35 strength
  *   - two secret elements exist beyond the ten
+ *   - three secret CENTERS (IZ, AZA, ONZA — one per size), a secret
+ *     JOINER (AC, the Old Wedding) and a secret FORM (the Selfsame) —
+ *     so every kind of word part has an apocryphal counterpart
  *   Secret knowledge is only ever taught by strange events on the road.
  * ============================================================ */
 (function (root, factory) {
@@ -89,13 +92,32 @@
     { id: 'ulta', seq: 'ULTA', name: 'the Beyond',  icon: '🌌', shape: 'Overreaching: harm beyond the kill spills onto the next foe.' },
     { id: 'onda', seq: 'ONDA', name: 'the Wave',    icon: '🌊', shape: 'Cresting: 45% of its harm washes over every other foe.' },
   ];
+  /* Secret centers — one per size. Their letter Z appears in no public
+   * word; it seeps into the tile bag only as the hidden grammar does. */
+  const SECRET_CENTERS = [
+    { id: 'iz',   seq: 'IZ',   name: 'the Rift',  icon: '🕳', secretPart: true,
+      shape: 'Rending: its harm ignores every nature and ward — it strikes true.' },
+    { id: 'aza',  seq: 'AZA',  name: 'the Mask',  icon: '🎭', secretPart: true,
+      shape: 'Masking: ×1.25 to everything, and the foe’s next trick dies in its throat.' },
+    { id: 'onza', seq: 'ONZA', name: 'the Abyss', icon: '⚫', secretPart: true,
+      shape: 'Devouring: ×1.15, and it gnaws away the foe’s utmost vigor.' },
+  ];
+  const ALL_CENTERS = CENTERS.concat(SECRET_CENTERS);
   const CENTER_BY_ID = {};
-  CENTERS.forEach(c => { CENTER_BY_ID[c.id] = c; });
+  ALL_CENTERS.forEach(c => { CENTER_BY_ID[c.id] = c; });
 
   /* ---------------- joiners ---------------- */
   const JOINERS = [
     { id: 'et', seq: 'ET', name: 'the Wedding', icon: '💍', note: 'ET — "and". Weds a second element into the word: its ALT spelling appears late, the suffix stays true to the first.' },
   ];
+  /* The secret joiner: an elder "and" that weds elements closer. */
+  const SECRET_JOINERS = [
+    { id: 'ac', seq: 'AC', name: 'the Old Wedding', icon: '🗝', secretPart: true,
+      note: 'AC — the elder "and". It weds two elements closer than ET dares: the union runs ×1.2.' },
+  ];
+  const ALL_JOINERS = JOINERS.concat(SECRET_JOINERS);
+  const JOINER_BY_ID = {};
+  ALL_JOINERS.forEach(j => { JOINER_BY_ID[j.id] = j; });
 
   /* ---------------- forms (named, not numbered) ---------------- */
   const FORMS = {
@@ -110,6 +132,15 @@
     grandunion: { name: 'Grand Union', note: 'As the Union, but sealed with the large suffix. The mightiest weavings known.' },
   };
   const FORM_IDS = Object.keys(FORMS);
+
+  /* The secret form: an element wedded to ITSELF — its own late spelling
+   * follows the long root, no joiner between them, sealed with the medium
+   * suffix. Forbidden, and half again as hot. */
+  const SECRET_FORMS = {
+    selfsame: { name: 'Selfsame', secretPart: true,
+      note: 'ROOT + binder + the element’s OWN late spelling + its medium suffix. An element wedded to itself — it runs half again as hot.' },
+  };
+  const FORM_DEF = Object.assign({}, FORMS, SECRET_FORMS);
 
   // magnitude by tier; tier = word length − 3 (length IS power)
   const MAG = [0, 5, 8, 12, 16, 21, 27, 34, 42, 52];
@@ -143,9 +174,11 @@
   }
 
   // spelling: the root string actually used (primary or secret third spelling)
-  function rawAssemble(el, form, center, el2, spelling) {
+  // joiner: which "and" weds a blend (ET by default; the secret AC)
+  function rawAssemble(el, form, center, el2, spelling, joiner) {
     const R = spelling || el.root;
     const LR = longRoot(el, R);
+    const J = (joiner || JOINERS[0]).seq;
     switch (form) {
       case 'cantrip': return R + el.small;
       case 'word': return R + el.medium;
@@ -154,35 +187,40 @@
       case 'mirror': return ease(el, LR, rev(center.seq)) + 'S';
       case 'verse': { const cs = centerSplit(center.seq); return ease(el, LR, cs.stem + el.medium + cs.vowel); }
       case 'sovereign': return LR + center.seq + el.large;
-      case 'union': return LR + 'ET' + el2.alt + el.medium;
-      case 'grandunion': return LR + 'ET' + el2.alt + el.large;
+      case 'selfsame': return ease(el, LR, el.alt + el.medium);
+      case 'union': return LR + J + el2.alt + el.medium;
+      case 'grandunion': return LR + J + el2.alt + el.large;
       default: throw new Error('bad form ' + form);
     }
   }
   // did the Easing Vowel fire for this assembly?
   function wasEased(el, form, center, spelling) {
-    if (form !== 'mirror' && form !== 'verse') return false;
+    if (form !== 'mirror' && form !== 'verse' && form !== 'selfsame') return false;
     const R = spelling || el.root;
     const LR = longRoot(el, R);
-    const piece = form === 'mirror' ? rev(center.seq) : centerSplit(center.seq).stem + el.medium;
+    const piece = form === 'mirror' ? rev(center.seq)
+      : form === 'selfsame' ? el.alt + el.medium
+      : centerSplit(center.seq).stem + el.medium;
     return !VOWELS.includes(LR[LR.length - 1]) && !VOWELS.includes(piece[0]);
   }
-  function assemble(el, form, center, el2, spelling) { return sandhi(rawAssemble(el, form, center, el2, spelling)); }
+  function assemble(el, form, center, el2, spelling, joiner) { return sandhi(rawAssemble(el, form, center, el2, spelling, joiner)); }
 
   /* ---------------- parts: the grimoire's notes ---------------- */
-  function partsOf(el, form, center, el2, isSecretSpelling, elided, eased) {
+  function partsOf(el, form, center, el2, isSecretSpelling, elided, eased, joiner) {
     const parts = [];
     if (el.hiddenEl) parts.push('selem:' + el.id);
     else if (isSecretSpelling) parts.push('sroot:' + el.id);
     else parts.push('root:' + el.id);
-    parts.push('form:' + form);
+    parts.push((SECRET_FORMS[form] ? 'sform:' : 'form:') + form);
     if (form === 'cantrip') parts.push(el.hiddenEl ? 'selem:' + el.id : 'suf:' + el.id + ':small');
-    if (['word', 'bound', 'verse', 'union'].includes(form)) parts.push(el.hiddenEl ? 'selem:' + el.id : 'suf:' + el.id + ':medium');
+    if (['word', 'bound', 'verse', 'union', 'selfsame'].includes(form)) parts.push(el.hiddenEl ? 'selem:' + el.id : 'suf:' + el.id + ':medium');
     if (['sovereign', 'grandunion'].includes(form)) parts.push(el.hiddenEl ? 'selem:' + el.id : 'suf:' + el.id + ':large');
     if (!['cantrip', 'word'].includes(form)) parts.push(el.hiddenEl ? 'selem:' + el.id : 'conn:' + el.id);
-    if (center) parts.push('center:' + center.id);
+    if (form === 'selfsame') parts.push(el.hiddenEl ? 'selem:' + el.id : 'alt:' + el.id);
+    if (center) parts.push((center.secretPart ? 'scenter:' : 'center:') + center.id);
     if (el2) {
-      parts.push('join:et');
+      const j = joiner || JOINERS[0];
+      parts.push((j.secretPart ? 'sjoin:' : 'join:') + j.id);
       parts.push(el2.hiddenEl ? 'selem:' + el2.id : 'alt:' + el2.id);
     }
     if (elided) parts.push('rule:elision');
@@ -240,16 +278,18 @@
   };
   const sigKey = (a, b) => [a, b].sort().join('+');
 
-  function resolveFx(el, form, center, el2, len) {
+  function resolveFx(el, form, center, el2, len, joiner) {
     const tier = tierOf(len);
     let fx;
     if (el2) {
       const sig = SIGNATURES[sigKey(el.id, el2.id)];
       if (sig) { fx = Object.assign({}, sig.fx(tier)); fx.sig = sig.name; }
       else fx = mergeFx(scaleFx(baseFx(el, tier), 0.65), scaleFx(baseFx(el2, tier), 0.65));
+      if (joiner && joiner.id === 'ac') fx = scaleFx(fx, 1.2); // the Old Wedding weds closer
     } else {
       fx = baseFx(el, tier);
     }
+    if (form === 'selfsame') fx = scaleFx(fx, 1.5); // wedded to itself
     if (center) {
       switch (center.id) {
         case 'ora': fx = scaleFx(fx, 1.45); break;
@@ -262,6 +302,10 @@
         case 'um': fx.hush = 1; break;
         case 'ulta': fx.overkill = true; break;
         case 'onda': fx.splash = 0.45; break;
+        // the apocryphal centers
+        case 'iz': fx.trueDmg = true; break;
+        case 'aza': fx = scaleFx(fx, 1.25); fx.hush = (fx.hush || 0) + 1; break;
+        case 'onza': fx = scaleFx(fx, 1.15); fx.erode = (fx.erode || 0) + Math.ceil(MAG[tier] * 0.3); break;
       }
     }
     if (form === 'mirror') fx.mirrorBlock = tier * 2;
@@ -302,27 +346,31 @@
   function buildLexicon() {
     const WORDS = {};
     const LIST = [];
-    function addWord(el, form, center, el2, spelling) {
+    function addWord(el, form, center, el2, spelling, joiner) {
       const isSecretSpelling = !!spelling && spelling === el.secret;
-      const raw = rawAssemble(el, form, center, el2, spelling);
+      const raw = rawAssemble(el, form, center, el2, spelling, joiner);
       const word = sandhi(raw);
       if (WORDS[word]) throw new Error('collision: ' + word + ' (' + WORDS[word].name + ')');
       const elided = word !== raw;
       const eased = wasEased(el, form, center, spelling);
-      const hidden = !!el.hiddenEl || isSecretSpelling || !!(el2 && el2.hiddenEl);
-      let fx = resolveFx(el, form, center, el2, word.length);
+      const parts = partsOf(el, form, center, el2, isSecretSpelling, elided, eased, joiner);
+      // hidden: any part of the word belongs to the secret grammar
+      const hidden = parts.some(pid => /^(sroot|selem|scenter|sjoin|sform):/.test(pid));
+      let fx = resolveFx(el, form, center, el2, word.length, joiner);
       if (isSecretSpelling) fx = scaleFx(fx, 1.35); // the elder spellings run hotter
       const sig = el2 ? SIGNATURES[sigKey(el.id, el2.id)] : null;
       const entry = {
         word, len: word.length, tier: tierOf(word.length),
         el: el.id, el2: el2 ? el2.id : null, center: center ? center.id : null,
+        joiner: el2 ? (joiner || JOINERS[0]).id : null,
         form, hidden, secretSpelling: isSecretSpelling,
         name: el2
-          ? (sig ? `${sig.icon} ${sig.name} ${FORMS[form].name}` : `${el.name}–${el2.name} ${FORMS[form].name}`)
-          : `${isSecretSpelling ? '✧ Elder ' : ''}${el.name} ${FORMS[form].name}${center ? ' of ' + center.name : ''}`,
+          ? (sig ? `${sig.icon} ${sig.name} ${FORM_DEF[form].name}` : `${el.name}–${el2.name} ${FORM_DEF[form].name}`)
+            + (joiner && joiner.secretPart ? ' (Old Wedding)' : '')
+          : `${isSecretSpelling ? '✧ Elder ' : ''}${el.name} ${FORM_DEF[form].name}${center ? ' of ' + center.name : ''}`,
         icon: el.icon,
         fx, elided,
-        parts: partsOf(el, form, center, el2, isSecretSpelling, elided, eased),
+        parts,
         desc: describeFx(fx, el),
       };
       WORDS[word] = entry;
@@ -334,15 +382,21 @@
         addWord(el, 'cantrip', null, null, spelling);
         addWord(el, 'word', null, null, spelling);
         addWord(el, 'bound', null, null, spelling);
-        for (const c of CENTERS) {
+        // every center — public and secret — wears all four woven forms
+        for (const c of ALL_CENTERS) {
           for (const form of ['weave', 'mirror', 'verse', 'sovereign']) addWord(el, form, c, null, spelling);
         }
+        // the Selfsame: the element wedded to itself (secret form)
+        addWord(el, 'selfsame', null, null, spelling);
       }
-      // blends: primary spelling only; the second element in its ALT spelling
+      // blends: primary spelling only; the second element in its ALT spelling.
+      // Both joiners wed every pair: ET openly, AC in secret.
       for (const el2 of ALL_ELEMENTS) {
         if (el2.id === el.id || el.hiddenEl) continue;
-        addWord(el, 'union', null, el2);
-        addWord(el, 'grandunion', null, el2);
+        for (const j of ALL_JOINERS) {
+          addWord(el, 'union', null, el2, null, j);
+          addWord(el, 'grandunion', null, el2, null, j);
+        }
       }
     }
     return { WORDS, LIST };
@@ -385,16 +439,28 @@
     }
     for (const j of JOINERS) add('join:' + j.id, j.icon, `${j.seq} — ${j.name}`, j.note, 'joiners');
     for (const fid of FORM_IDS) add('form:' + fid, '𝔏', `The ${FORMS[fid].name}`, FORMS[fid].note, 'forms');
+    /* the RULES of the tongue — lexical behaviours and the laws of length.
+     * Notes flagged `info` describe the whole language rather than any one
+     * word, so no word's readability hangs on them. */
     add('rule:elision', '✒️', "The Scribe's Elision", 'Twin vowels never touch — the second transmutes: A→E, E→A, I→E, O→U, U→O. So GEL+A+AS is written GELAES.', 'rules');
     add('rule:easing', '🫧', 'The Easing Vowel', "When a binder's consonant would strike another consonant, the element's small vowel eases the joint: UMBR+XI+S is written UMBROXIS.", 'rules');
+    add('rule:length', '📏', 'Length is Power', 'A word’s tier is its length less three: every added rune deepens the magnitude (4 runes stir 5; 12 runes stir 52). Longer words need more — and rarer — tiles; that is the only price magic asks.', 'rules');
+    PARTS['rule:length'].info = true;
+    add('rule:sizes', '🧿', 'The Three Sizes', 'Centers come short (2 runes), standard (3) and grand (4), and the same woven forms wrap any of them — so a Weave spans 6–8 runes, a Mirror 7–9, a Verse 8–10, a Sovereign 9–11. Cantrips are 4, Words 5, Bound Words 6; Unions run 11 and Grand Unions 12.', 'rules');
+    PARTS['rule:sizes'].info = true;
     return PARTS;
   }
   const PARTS = buildParts();
   const PART_IDS = Object.keys(PARTS);
 
-  /* secret knowledge ids (taught only by events; never listed anywhere) */
+  /* secret knowledge ids (taught only by events; never listed anywhere).
+   * Every kind of word part has its apocryphal counterpart here: roots
+   * (elder spellings), whole elements, centers, a joiner, and a form. */
   const SECRET_IDS = ELEMENTS.map(e => 'sroot:' + e.id)
-    .concat(SECRET_ELEMENTS.map(e => 'selem:' + e.id));
+    .concat(SECRET_ELEMENTS.map(e => 'selem:' + e.id))
+    .concat(SECRET_CENTERS.map(c => 'scenter:' + c.id))
+    .concat(SECRET_JOINERS.map(j => 'sjoin:' + j.id))
+    .concat(Object.keys(SECRET_FORMS).map(f => 'sform:' + f));
   const SECRET_INFO = {};
   for (const el of ELEMENTS) {
     SECRET_INFO['sroot:' + el.id] = {
@@ -408,6 +474,27 @@
       id: 'selem:' + el.id, icon: el.icon,
       title: `${el.root} — the ${el.name} that is not spoken of`,
       note: el.identity,
+    };
+  }
+  for (const c of SECRET_CENTERS) {
+    SECRET_INFO['scenter:' + c.id] = {
+      id: 'scenter:' + c.id, icon: c.icon,
+      title: `${c.seq} — ${c.name}, a center no note admits`,
+      note: c.shape,
+    };
+  }
+  for (const j of SECRET_JOINERS) {
+    SECRET_INFO['sjoin:' + j.id] = {
+      id: 'sjoin:' + j.id, icon: j.icon,
+      title: `${j.seq} — ${j.name}`,
+      note: j.note,
+    };
+  }
+  for (const f of Object.keys(SECRET_FORMS)) {
+    SECRET_INFO['sform:' + f] = {
+      id: 'sform:' + f, icon: '𝔉',
+      title: `The ${SECRET_FORMS[f].name} — a form struck from the record`,
+      note: SECRET_FORMS[f].note,
     };
   }
 
@@ -426,7 +513,9 @@
 
   return {
     ELEMENTS, SECRET_ELEMENTS, ALL_ELEMENTS, EL_BY_ID,
-    CENTERS, CENTER_BY_ID, JOINERS, FORMS, FORM_IDS, MAG, tierOf,
+    CENTERS, SECRET_CENTERS, ALL_CENTERS, CENTER_BY_ID,
+    JOINERS, SECRET_JOINERS, ALL_JOINERS, JOINER_BY_ID,
+    FORMS, SECRET_FORMS, FORM_DEF, FORM_IDS, MAG, tierOf,
     SIGNATURES, sigKey,
     sandhi, assemble, rawAssemble, resolveFx, describeFx, longRoot, centerSplit,
     WORDS: LEX.WORDS, LIST: LEX.LIST, VISIBLE,

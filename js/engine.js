@@ -214,7 +214,18 @@
       if (!b.over) serveMystery(b, m.len);
       return { ok: true, correct: true, marks, notes: fresh };
     }
-    return { ok: true, correct: false, marks };
+    // even a WRONG guess teaches: if it is a true word of the loom-tongue
+    // whose grammar is not yet in the notes, the speaking inscribes it
+    const spoken = Morph.WORDS[g];
+    let fresh = [];
+    if (spoken) {
+      fresh = inscribeParts(b.run.meta, spoken);
+      if (fresh.length) {
+        b.stats.notes.push(...fresh);
+        say(b, `✒️ <b>${g}</b> was not the mystery — but it IS a word, and its grammar inscribes itself: <b>${fresh.map(pid => Morph.PARTS[pid].title).join(' · ')}</b>.`);
+      }
+    }
+    return { ok: true, correct: false, marks, notes: fresh };
   }
 
   function revealLetter(b) {
@@ -318,6 +329,13 @@
       b.stats.improvs++;
       const improv = IMPROV_MULT + (b.run.perks.whetstone ? 0.2 : 0);
       say(b, `〰 You improvise <b>${word}</b> — its grammar escapes you (×${improv}).`);
+      // spelling a word you cannot yet read still teaches its grammar:
+      // the unknown parts inscribe themselves (the cast stays improvised)
+      const fresh = inscribeParts(b.run.meta, entry);
+      if (fresh.length) {
+        b.stats.notes.push(...fresh);
+        say(b, `✒️ The speaking teaches: <b>${fresh.map(pid => Morph.PARTS[pid].title).join(' · ')}</b> — yours forever.`);
+      }
       castWordFx(b, word, improv, 'improvised');
     }
     return { ok: true, inscribed: readable };
@@ -697,13 +715,16 @@
   }
 
   // Each world: 4 stages; stages 1–2 offer a CHOICE of two doors.
+  // Elder pages are RARE: the hidden grammar should take many runs to
+  // gather, so an elder door graces roughly one world in five.
+  const ELDER_CHANCE = 0.2;
   function buildWorlds(rng, meta) {
     return Foes.WORLDS.map((w, wi) => {
       const untaught = LoomEvents.SECRET_EVENTS.filter(ev =>
         !meta.secrets.has(ev.teaches) && (!ev.deep || wi === 2));
       const stages = [];
       stages.push([{ type: 'battle' }]);
-      const eventNode = (untaught.length && rng() < 0.45)
+      const eventNode = (untaught.length && rng() < ELDER_CHANCE)
         ? { type: 'elder', event: pick(rng, untaught) }
         : { type: 'event' };
       stages.push(shufflePair(rng, [{ type: 'battle' }, eventNode]));

@@ -1,8 +1,9 @@
 /* ============================================================
  * WORDLOOM — Events on the road
  * Ordinary events trade and tempt. SECRET events teach the hidden
- * grammar: elder spellings of the roots, and the two elements that
- * are not spoken of. Secret knowledge never appears in notes, chips,
+ * grammar: elder spellings of the roots, the two elements that are
+ * not spoken of, the three secret centers, the old joiner AC, and
+ * the Selfsame form. Secret knowledge never appears in notes, chips,
  * or guides — only in the moment it is given.
  * ============================================================ */
 (function (root, factory) {
@@ -71,6 +72,16 @@
       text: 'An illuminated capital so bright it lights the room. Inside its gold-leaf coils, minute and patient: the light\'s elder name, <b>SOL</b>.' },
     { id: 's_san', teaches: 'sroot:san', icon: '🌿', title: 'The Physician\'s Last Note',
       text: 'His final prescription, written for himself, unfilled: "for what ails all of us — <b>ANI</b>, spoken with intent." He lived to ninety anyway.' },
+    { id: 's_iz', teaches: 'scenter:iz', icon: '🕳', title: 'The Torn Stitch',
+      text: 'A tapestry with one thread pulled clean through, and the hole it left will not close. Sewn around the wound, tiny as pain: <b>IZ</b> — a center that rends. What it strikes, nothing wards.' },
+    { id: 's_aza', teaches: 'scenter:aza', icon: '🎭', title: 'The Second Face',
+      text: 'A mummer\'s mask, left face-down. Its inside is another face. Painted where a mouth would press against yours: <b>AZA</b> — the center that masks. The word wears another face, and the foe\'s next trick dies in its throat.' },
+    { id: 's_onza', teaches: 'scenter:onza', icon: '⚫', title: 'The Sounding Line', deep: true,
+      text: 'A well with no bottom, and a rope with no end, and a knot every fathom spelling the same four runes: <b>ONZA</b> — the grand center that devours. It gnaws at what a foe may ever be again.' },
+    { id: 's_ac', teaches: 'sjoin:ac', icon: '🗝', title: 'The Elder Vow', deep: true,
+      text: 'Two rings rusted into one on a chapel floor, and beneath them the vow that fused them — not ET, the wedding everyone speaks, but the old word: <b>AC</b>. What AC joins runs closer, and hotter, than ET ever dared.' },
+    { id: 's_selfsame', teaches: 'sform:selfsame', icon: '𝔉', title: 'The Mirror Marriage', deep: true,
+      text: 'A marriage record with one name written twice, in two different hands. The register calls the form <b>Selfsame</b>: an element wedded to itself — its long root, then its own late spelling, then its medium suffix. IGNICINUS. The church struck it from the record. The grammar did not.' },
     { id: 's_nih', teaches: 'selem:nih', icon: '⬛', title: 'The Unwritten Margin', deep: true,
       text: 'A margin with nothing in it. TRULY nothing — the paper is gone, the light is gone. From inside the absence a grammar teaches itself to you: <b>NIH</b>, the Void root; <b>-A</b>, <b>-IL</b>, <b>-ORS</b> its suffixes; <b>I</b> its binder. NIHIL. You wish you could forget it.' },
     { id: 's_cru', teaches: 'selem:cru', icon: '🩸', title: 'The Red Colophon', deep: true,

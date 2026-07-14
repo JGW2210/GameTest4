@@ -20,9 +20,13 @@ cards entirely — **words are both the puzzle and the arsenal**:
   notes) from your **loom of letter tiles**. Tiles are the only cost. Longer
   words need more, rarer letters; that IS the mana curve.
 
-You never collect words. You collect the grammar: **82 notes read all 610
+You never collect words. You collect the grammar: **84 notes read all 610
 visible words** — learn `GEL`, `-AS`, and the A-binder from one lucky solve
-and you can suddenly read a dozen frost words you have never seen.
+and you can suddenly read a dozen frost words you have never seen. And
+solving is not the only teacher: **speaking any true word of the tongue** —
+improvising it from your tiles, or offering it as a mystery guess, right or
+wrong — inscribes its unknown parts too. Every rule of the language,
+including the laws of length, is logged under the grimoire's **rules** area.
 
 There is no word list. The lexicon is **generated from a grammar** — 10
 element roots × 3 suffix sizes × 10 centers (short/standard/grand) × 9
@@ -59,7 +63,10 @@ weavable at all).
 You **choose the mystery word's length**. Lengths beyond the basic forms
 unlock through their form notes — and the deep forms (Mirror, Verse,
 Sovereign, the Unions) never drop from ordinary study; only elites, wardens,
-and the elder roads hold them.
+and the elder roads hold them. The elder roads themselves are **rare**
+(roughly one world in five), and there are now **17 secrets** to find: elder
+spellings, the two unspoken elements, three secret centers, a secret joiner,
+and a secret form — an apocryphal counterpart for every kind of word part.
 
 18 foes attack the *word game*, not just your ink: vowel leeches and tile
 thieves, rime wraiths, wisps that blur your wordle marks, lexicons that sap
@@ -76,14 +83,16 @@ Unions.
 
 ## Balance snapshot
 
-`node tools/simulate.js 300` — scripted player on the shipped engine:
+`node tools/simulate.js 300` — scripted player on the shipped engine.
+(Speaking-teaches makes early runs far more generous with notes; the hidden
+grammar, now 17 secrets behind rarer elder doors, is the long game.)
 
 | grimoire | win rate | note |
 |---|---:|---|
-| fresh (5 starter notes) | 1–3% | banks ~17 notes and ~0.5 secrets per death |
-| +16 notes | ~9% | |
-| +30 notes, Scrivener | ~11% | the Cantor reaches ~32% here |
-| full 82-note grammar | ~56% | ~73% with every secret, as the Cantor |
+| fresh (5 starter notes) | ~20–25% | banks ~46 notes and ~0.4 secrets per run |
+| +16 notes | ~33% | |
+| +30 notes, Scrivener | ~30% | the Cantor reaches ~56% here |
+| full 84-note grammar | ~62% | ~76% with every secret, as the Cantor |
 
 ## Layout
 

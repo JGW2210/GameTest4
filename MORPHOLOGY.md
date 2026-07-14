@@ -1,10 +1,11 @@
 # The Loom-Tongue — a complete grammar (second weaving)
 
 Every spell in WORDLOOM is a word **assembled by rule** from this part list.
-There is no word list anywhere in the game — the 1,166-word lexicon (610
-visible, 556 hidden) is generated from this grammar, and learning the grammar
-is learning the game. The grimoire's **82 public notes** read every visible
-word; the hidden grammar (§9) is taught only by elder pages on the road.
+There is no word list anywhere in the game — the 1,672-word lexicon (610
+visible, 1,062 hidden) is generated from this grammar, and learning the
+grammar is learning the game. The grimoire's **84 public notes** read every
+visible word; the hidden grammar (§8) is taught only by elder pages on the
+road — and **every kind of part has an apocryphal counterpart** there.
 
 ## 1. Elements (prefix roots)
 
@@ -83,7 +84,17 @@ center size moves their lengths:
   **signature pairs** fuse into named magic — Steam (fire+water, scalds),
   Magma, Shatter, Hail, Tempest, Eclipse, Miasma, Bloom, Wildfire, Dawn.
 
-## 4. Euphony: two rules
+## 4. The rules of the tongue
+
+The grimoire's **rules** area holds four notes — the two euphony rules below
+(the tongue's *lexical behaviours*), plus two laws of length:
+
+- **Length is Power** — a word's tier is its length less three; every added
+  rune deepens the magnitude (4 runes stir 5; 12 runes stir 52). Longer words
+  need more, rarer tiles — that is the only price magic asks.
+- **The Three Sizes** — center sizes move the woven forms' lengths: a Weave
+  spans 6–8 runes, a Mirror 7–9, a Verse 8–10, a Sovereign 9–11; Cantrips are
+  4, Words 5, Bound Words 6, Unions 11, Grand Unions 12.
 
 **The Scribe's Elision** — twin vowels never touch; the second transmutes:
 
@@ -128,9 +139,10 @@ LIGHT    LUMA   LUMEN   LUMIEN   LUMIORA   LUMIAROS   LUMIORENA   LUMIORANIS
 LIFE     SANA   SANUS   SANIUS   SANIORA   SANIAROS   SANIORUSA   SANIORATAS
 ```
 
-(Substitute any other center for `ORA` in the last four columns — six centers
-per element, so each element speaks 27 words: 3 short forms + 4 long forms × 6
-centers. 10 elements × 27 = **270 words**.)
+(Substitute any other center for `ORA` in the last four columns — ten public
+centers per element, so each element speaks 43 single-element words: 3 short
+forms + 4 woven forms × 10 centers. 10 elements × 43 = 430, plus 90 Unions
+and 90 Grand Unions = **610 visible words**.)
 
 ## 7. Why this shape
 
@@ -140,9 +152,13 @@ centers. 10 elements × 27 = **270 words**.)
   *knowledge, not memorization, is the meta-progression.*
 - **The grimoire records notes, not words.** Solving a mystery word inscribes
   the *parts* it is built from — its root, suffix, binder, center, form rule,
-  even the Elision the first time you catch it at work. A word is **readable**
-  (castable at full power) once every part it uses is in your notes. The
-  entire collection is **64 notes**; together they read all 270 words.
+  even the Elision the first time you catch it at work. And solving is not
+  the only teacher: **speaking any true word of the tongue** — improvising it
+  from the loom, or offering it as a mystery guess, right or wrong — likewise
+  inscribes its unknown parts. A word is **readable** (castable at full
+  power) once every part it uses is in your notes. The entire collection is
+  **84 notes**; 82 of them are load-bearing and together read all 610 visible
+  words (the two laws of length are pure lore).
 - **The cost curve is the spelling.** Long words need more (and rarer) tiles
   from the loom. `AQU` words always need a `Q`. Nothing else prices magic.
 - **Improvisation is literacy.** Any grammatical word can be spoken at half
@@ -152,11 +168,13 @@ centers. 10 elements × 27 = **270 words**.)
 ## 8. The hidden grammar (design spoilers)
 
 None of the following appears in any note, chip, guide, or grimoire page.
-It is taught only by **elder pages** — rare doors on the road that name a
-spelling once and record it nowhere but in the save's secret knowledge.
+It is taught only by **elder pages** — rare doors on the road (roughly one
+world in five carries one) that name a spelling once and record it nowhere
+but in the save's secret knowledge. Every kind of word part has an
+apocryphal counterpart — 17 secrets in all:
 
-- **Elder spellings** — every element has a secret third spelling of its
-  root, and words woven from it run ×1.35 hotter: `FLA` (fire), `RIM`
+- **Elder spellings** (10) — every element has a secret third spelling of
+  its root, and words woven from it run ×1.35 hotter: `FLA` (fire), `RIM`
   (frost), `SAX` (earth), `VEL` (air), `VIR` (venom), `TEM` (storm), `MAR`
   (water), `TEN` (shadow), `SOL` (light), `ANI` (vitality). FLA+A elides to
   **FLAE**; the whole ladder regenerates under each spelling.
@@ -165,10 +183,26 @@ spelling once and record it nowhere but in the save's secret knowledge.
   (Blood: terrible damage that drains, but each casting costs your own ink;
   its Cantrip is **CRUX**, its Word **CRUOR**). Their letters seep faintly
   into the tile bag, which is why the rare `C` exists at all.
+- **The three secret centers** (one per size) — `IZ` the Rift (short:
+  its harm strikes true, ignoring every nature and ward), `AZA` the Mask
+  (standard: ×1.25 and the foe's next trick dies in its throat), `ONZA`
+  the Abyss (grand: ×1.15 and it gnaws the foe's utmost vigor). They wear
+  all four woven forms on every element — `IGNIZIS`, `UMBRAZAS`,
+  `AETHONZISA`... — and their letter `Z` reaches the tile bag only the way
+  all hidden letters do: faintly.
+- **The secret joiner** — `AC`, the Old Wedding, the elder "and". It weds
+  every pair ET can (`IGNIACNIVUS`), and what AC joins runs ×1.2 closer.
+- **The secret form** — the **Selfsame**: an element wedded to itself, its
+  own late spelling after the long root, sealed with the medium suffix
+  (`IGNICINUS`, `UMBRONOCIS`). Struck from the record; ×1.5 hot.
 
 ## 9. Validation
 
 `node tools/genwords.js` regenerates the lexicon and asserts: exact
-canonical forms, 270 unique words, correct lengths, no twin vowels survive
-elision, no triple letters, no 4-consonant pileups. `--dump` prints every word
-with its meaning.
+canonical forms, 1,672 unique words, correct lengths, no twin vowels survive
+elision, no triple letters, no 4-consonant pileups — plus **combination
+coverage**: every element uses all three suffix sizes, every public center
+wraps every element in all four woven forms, every element weds every other
+both ways at both blend lengths, every length 4–12 exists, and every kind of
+part has a weaving secret counterpart. `--dump` prints every word with its
+meaning.

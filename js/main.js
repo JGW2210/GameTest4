@@ -589,10 +589,12 @@
           <td title="${e.identity}">${e.name}</td></tr>`).join('')}
       </table>
       <div style="margin-top:5px">centers: ${Morph.CENTERS.map(c => P.has('center:' + c.id)
-        ? `<span class="mono" title="${c.shape}">${c.seq}</span>` : '<span class="dim">··</span>').join(' ')}</div>
+        ? `<span class="mono" title="${c.shape}">${c.seq}</span>` : '<span class="dim">··</span>').join(' ')}${Morph.SECRET_CENTERS.filter(c => S.has('scenter:' + c.id)).map(c =>
+        ` <span class="mono elder" title="${c.shape}">${c.seq}</span>`).join('')}</div>
       <div>forms: ${Morph.FORM_IDS.map(f => P.has('form:' + f)
-        ? `<span class="mono" title="${Morph.FORMS[f].note}">${Morph.FORMS[f].name}</span>` : '<span class="dim">···</span>').join(' · ')}</div>
-      <div>${P.has('join:et') ? '<span class="mono" title="weds two elements">ET</span> · ' : ''}${P.has('rule:elision') ? '<span class="mono" title="twin vowels: the second transmutes">✒️elision</span> · ' : ''}${P.has('rule:easing') ? '<span class="mono" title="consonant joints eased by the small vowel">🫧easing</span>' : ''}</div>`;
+        ? `<span class="mono" title="${Morph.FORMS[f].note}">${Morph.FORMS[f].name}</span>` : '<span class="dim">···</span>').join(' · ')}${S.has('sform:selfsame')
+        ? ` · <span class="mono elder" title="${Morph.SECRET_FORMS.selfsame.note}">${Morph.SECRET_FORMS.selfsame.name}</span>` : ''}</div>
+      <div>${P.has('join:et') ? '<span class="mono" title="weds two elements">ET</span> · ' : ''}${S.has('sjoin:ac') ? '<span class="mono elder" title="the elder wedding — closer and hotter">AC</span> · ' : ''}${P.has('rule:elision') ? '<span class="mono" title="twin vowels: the second transmutes">✒️elision</span> · ' : ''}${P.has('rule:easing') ? '<span class="mono" title="consonant joints eased by the small vowel">🫧easing</span>' : ''}</div>`;
     return g;
   }
 
@@ -872,7 +874,8 @@
       <p class="small" style="margin-top:6px"><b>The Scribe's Elision:</b> twin vowels never touch — the second transmutes (A→E, E→A, I→E, O→U, U→O).
       <b>The Easing Vowel:</b> when a binder's consonant strikes another consonant, the element's small vowel eases the joint.</p>
       <p class="small dim" style="margin-top:6px">Your grimoire records <b>notes</b> — these rules and parts — not words.
-      A word casts at full strength once every part it uses is in your notes; otherwise it can be improvised at half power.
+      A word casts at full strength once every part it uses is in your notes; otherwise it can be improvised at half power —
+      and the speaking itself teaches: any true word you improvise, or offer as a mystery guess, inscribes its unknown parts.
       The loom never points at words: it only <b>senses</b> the length of the longest word waiting in your tiles
       (your Weaver decides how far that sense reaches, and the Ribbon Index stretches it). Every word is spelled by hand.
       Deep lengths must be unlocked before the mystery word will come that long. And the road-books say the grammar keeps
