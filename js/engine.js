@@ -1,23 +1,32 @@
 /* ============================================================
- * LEXICON ARCANUM — Core engine v2 (battle + run logic)
- * Pure logic, no DOM. Runs in the browser and in Node, so the
- * balance simulator exercises the exact rules the game ships.
+ * WORDLOOM — engine (pure logic, browser + Node)
  *
- * v2 systems: energy (with in-battle max-⚡ ramping), multi-enemy
- * encounters with targeting, scry, spell schools & combos,
- * word-length attunement, relics, signature spells.
+ * The grimoire records NOTES, not words: solving a mystery word
+ * inscribes the rules and parts it is built from (its root, suffix,
+ * binder, center, form — even the Elision, the first time you catch
+ * it at work). A word can be READ — cast at full power — once every
+ * part it uses is in your grimoire. 64 notes read all 270 words.
+ *
+ * The two loops:
+ *   ACQUIRE — one free guess per turn at the mystery word (wordle
+ *     feedback). Solve it → it casts at ×1.5 and its parts are
+ *     inscribed FOREVER (across runs).
+ *   DEPLOY — spell any readable word from your loom of letter
+ *     tiles. Tiles are the only cost. Longer words need more (and
+ *     rarer) letters: the cost curve IS the spelling.
+ *
+ * Improvisation: a grammatical word with parts you have not yet
+ * inscribed can still be spoken — at half power. Deduction is the
+ * only way to truly own the grammar.
  * ============================================================ */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = factory(require('./data/words.js'), require('./data/cards.js'),
-      require('./data/classes.js'), require('./data/enemies.js'), require('./data/relics.js'),
-      require('./data/arcana.js'));
+    module.exports = factory(require('./data/morphology.js'), require('./data/foes.js'));
   } else {
-    root.Engine = factory(root.WordData, root.CardData, root.ClassData, root.EnemyData, root.RelicData, root.ArcanaData);
+    root.Loom = factory(root.Morph, root.Foes);
   }
-})(typeof self !== 'undefined' ? self : this, function (WordData, CardData, ClassData, EnemyData, RelicData, ArcanaData) {
+})(typeof self !== 'undefined' ? self : this, function (Morph, Foes) {
 
-  /* ---------- deterministic RNG (mulberry32) ---------- */
   function makeRng(seed) {
     let a = seed >>> 0;
     return function () {
@@ -28,1118 +37,575 @@
     };
   }
   const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
-  function shuffle(rng, arr) {
-    const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
+
+  const TRAY_BASE = 12;
+  const PLAYER_HP = 52;
+  const SOLVE_MULT = 1.5;       // a word spoken true on the guess casts harder
+  const IMPROV_MULT = 0.5;      // valid-but-uninscribed words cast at half power
+  const VOWELS = 'AEIOU';
+
+  /* ---------------- the letter bag ---------------- */
+  // Weighted by the lexicon's own letter frequency, with a vowel floor so
+  // a tray is never unspellable garbage.
+  function drawLetter(rng, bag) {
+    let total = 0;
+    for (const ch in bag) total += bag[ch];
+    let r = rng() * total;
+    for (const ch in bag) { r -= bag[ch]; if (r <= 0) return ch; }
+    return 'A';
   }
 
-  const HAND_CAP = 8;
-  const KEEP_LIMIT = 5; // cards kept in hand past end of turn — the rest are shed
-  const BASE_ENERGY = 3;
-  const INSIGHT_CAP = 10; // insight never pools past this — no cross-battle hoarding
-  const FIRST_GUESS_MULT = 1.5;
-  const POWER_MULT = 2;
+  let tileSeq = 1;
+  function drawTile(rng, bag) { return { id: tileSeq++, ch: drawLetter(rng, bag), frozen: 0 }; }
 
-  /* ============================================================
-   * CARD INSTANCES
-   * ============================================================ */
-  let instSeq = 1;
-  const INSCRIBE_SCALE = 0.4; // inscribed cards carry 40% of the word's spell
-  const INSCRIBE_KEYS = ['dmg', 'block', 'heal', 'burn', 'poison', 'insight', 'str'];
-  function makeCard(id, upgraded, inscribed) {
-    const base = CardData.BY_ID[id];
-    let fx = upgraded ? CardData.upgradedFx(base.fx) : Object.assign({}, base.fx);
-    let name = base.name + (upgraded ? ' +' : '');
-    if (inscribed && WordData.SPELLS[inscribed]) {
-      fx = Object.assign({}, fx);
-      const sfx = WordData.SPELLS[inscribed].fx;
-      for (const k of INSCRIBE_KEYS) {
-        if (sfx[k]) fx[k] = (fx[k] || 0) + Math.max(1, Math.round(sfx[k] * INSCRIBE_SCALE));
-      }
-      name += ' · ' + inscribed;
+  function refillTray(b) {
+    const want = b.traySize - b.tray.length;
+    for (let i = 0; i < want; i++) b.tray.push(drawTile(b.rng, b.bag));
+    // vowel floor: at least 4 vowels among 12 (scaled to tray size)
+    const floor = Math.max(3, Math.round(b.traySize / 3));
+    let vowels = b.tray.filter(t => VOWELS.includes(t.ch)).length;
+    let guard = 0;
+    while (vowels < floor && guard++ < 20) {
+      const idx = b.tray.findIndex(t => !VOWELS.includes(t.ch) && !t.frozen);
+      if (idx < 0) break;
+      b.tray[idx] = drawTile(b.rng, b.bag);
+      if (VOWELS.includes(b.tray[idx].ch)) vowels++;
     }
-    return { inst: instSeq++, id, name, rarity: base.rarity,
-             cost: base.cost, fx, upgraded: !!upgraded, inscribed: inscribed || null,
-             flavor: base.flavor, token: false, sharpen: 0 };
   }
 
-  /* ============================================================
-   * BATTLE
-   * ============================================================ */
-  function makeEnemy(id, world, stage, difficulty, scale, condMod) {
-    const e = EnemyData.ENEMIES[id];
-    const st = EnemyData.scaledStats(id, world, stage, difficulty);
-    if (condMod) {
-      st.hp = Math.round(st.hp * (condMod.foeHp || 1));
-      st.dmgMult *= (condMod.foeDmg || 1);
-    }
-    const hp = Math.max(6, Math.round(st.hp * (scale || 1)));
+  /* ---------------- battles ---------------- */
+  function makeFoe(id, scale) {
+    const f = Foes.FOES[id];
+    const hp = Math.round(f.hp * scale);
     return {
-      id: e.id, name: e.name, icon: e.icon, boss: !!e.boss, elite: !!e.elite,
-      hp, maxHp: hp, block: 0, str: 0, dmgMult: st.dmgMult * (scale ? Math.sqrt(scale) : 1),
-      weak: 0, vuln: 0, poison: 0, burn: 0, burnTurns: 0, stun: 0, blind: 0,
-      affinity: e.affinity || null, posture: e.posture || null, _parried: false,
-      patternIdx: 0, pattern: e.pattern, _choiceIdx: null,
+      id, name: f.name, icon: f.icon, boss: !!f.boss, elite: !!f.elite,
+      hp, maxHp: hp, str: 0, dmgScale: scale,
+      weakTo: f.weakTo || null, resist: f.resist || null,
+      gimmick: f.gimmick, regen: f.regen || 0,
+      poison: 0, burn: 0, burnTurns: 0, blind: 0, chill: 0, stun: 0,
+      pattern: f.pattern, patternIdx: 0,
     };
   }
 
-  function relicMod(b, key) { return RelicData.mod(b.relics, key); }
-
-  function gainInsight(b, n) {
-    const amt = Math.max(0, Math.min(n, b.insightCap - b.player.insight));
-    b.player.insight += amt;
-    return amt;
-  }
-
-  function createBattle(opts) {
-    // opts: { rng, cls, deck:[{id,upgraded,inscribed}], hp, maxHp,
-    //         enemyIds:[{id,scale}]|enemyId, world (tier), stage, difficulty,
-    //         meta:{learnedWords:Set, discoveredPower:Set}, wordLen, relics:[ids],
-    //         condition (page-condition mod), sigils:[words], savedWord, sewn }
-    const rng = opts.rng;
-    const relics = opts.relics || [];
-    const cond = opts.condition || {};
-    let enemyDefs = opts.enemyIds;
-    if (!enemyDefs && opts.enemyId) enemyDefs = [{ id: opts.enemyId, scale: 1 }];
-    const enemies = enemyDefs.map(d => makeEnemy(d.id, opts.world, opts.stage, opts.difficulty, d.scale, cond));
-
-    const hasBig = enemies.some(e => e.elite || e.boss);
-    const maxEnergy = Math.max(1, BASE_ENERGY
-      + RelicData.mod(relics, 'maxEnergy')
-      + (hasBig ? RelicData.mod(relics, 'maxEnergyVsElite') : 0)
-      + (cond.energyBonus || 0));
-
+  function createBattle(run, foeIds, scale) {
+    // foeIds entries: 'id' or { id, mult } for weakened companions
     const b = {
-      rng,
-      cls: opts.cls,
-      difficulty: opts.difficulty,
-      world: opts.world, stage: opts.stage,
-      meta: opts.meta,
-      relics,
-      condition: cond,
-      sigils: opts.sigils || [],
-      insightCap: Math.max(3, (opts.cls.insightCap || INSIGHT_CAP) + (cond.insightCap || 0)),
-      handCap: Math.max(3, HAND_CAP + (cond.handCap || 0)),
-      resonantSchool: pick(rng, Object.keys(WordData.SCHOOLS)),
-      player: {
-        hp: opts.hp, maxHp: opts.maxHp, block: 0, str: 0, wardBonus: 0, thorns: 0,
-        weak: 0, vuln: 0, regen: 0,
-        insight: 0, // fresh every battle, capped at insightCap
-        guessCost: 1, // rises by 1 for the rest of the turn after each correct guess
-        resonance: (opts.cls.resonanceBase || 0.35)
-          + RelicData.mod(relics, 'resonance') / 100
-          + (cond.resonanceBonus || 0) / 100,
-        freeGuesses: RelicData.mod(relics, 'freeGuessPerBattle'),
-        energy: 0, maxEnergy,
-        scryLeft: 0,
-        blade: 0, // Inkblade: grows with every spell cast, boosts attack cards
-        streak: 0, // consecutive turns with a correct guess
-        sewn: !!opts.sewn, // forbidden-word failure: no guessing, no spells
-        echo: RelicData.mod(relics, 'echoFirstSpell'),
-        twincast: 0, insightRune: 0,
-        refundOnCorrect: false,
-        castDiscount: (opts.cls.castDiscount || 0) + RelicData.mod(relics, 'tomeDiscount'),
-      },
-      enemies,
+      rng: run.rng,
+      run,
+      foes: foeIds.map(fid => typeof fid === 'string'
+        ? makeFoe(fid, scale)
+        : makeFoe(fid.id, scale * (fid.mult || 1))),
       target: 0,
-      drawPile: shuffle(rng, opts.deck.map(c => makeCard(c.id, c.upgraded, c.inscribed))),
-      hand: [], discard: [], exhausted: [],
-      wordLen: opts.wordLen,
-      word: null,
-      _savedWord: opts.savedWord || null,
-      _correctThisTurn: false,
+      player: { hp: run.hp, maxHp: run.maxHp, block: 0, blooms: [] },
+      traySize: run.traySize,
+      bag: run.bag,
+      tray: [],
+      cursedLetter: null,      // cannot appear in guesses this turn
+      mulligans: 1,
       turn: 0, over: false, won: false,
-      goldGained: 0, maxHpGained: 0,
-      schoolCasts: {}, lengthsCast: [],
-      spellsThisBattle: 0,
-      stats: { spellsCast: 0, firstGuessCasts: 0, autoCasts: 0, wordsLearned: [], powerDiscovered: [], powerWordsCast: [], solves: [] },
-      events: [],
+      guessedThisTurn: false,
+      mystery: null,
+      log: [],
+      stats: { casts: 0, improvs: 0, solves: 0, notes: [] },
     };
-    // battle-start relics
-    if (RelicData.mod(relics, 'strStart')) b.player.str += RelicData.mod(relics, 'strStart');
-    if (RelicData.mod(relics, 'thornsStart')) b.player.thorns += RelicData.mod(relics, 'thornsStart');
+    refillTray(b);
+    serveMystery(b);
+    b.turn = 1;
     return b;
   }
 
-  /* Export the unsolved mystery word so it can follow the run to the next
-     battle — no deduction is ever wasted. */
-  function exportWord(b) {
-    const w = b.word;
-    if (!w || !(w.guesses.length || w.revealed.length || w.knownAbsent.length || w.vowelInfo)) return null;
-    return {
-      answer: w.answer, len: w.len,
-      guesses: w.guesses.map(g => ({ word: g.word, marks: g.marks.slice() })),
-      revealed: w.revealed.map(r => ({ i: r.i, c: r.c, free: r.free })),
-      knownAbsent: w.knownAbsent.slice(),
-      vowelInfo: w.vowelInfo ? Object.assign({}, w.vowelInfo) : null,
-    };
-  }
-
-  /* Learned words consistent with everything known about the current mystery
-     word — powers the tap-to-guess candidate chips. */
-  function consistentLearned(b) {
-    const w = b.word;
-    if (!w) return [];
-    const pool = WordData.POOLS[w.len].filter(x => b.meta.learnedWords.has(x));
-    return pool.filter(x => {
-      if (w.guesses.some(g => g.word === x)) return false;
-      if (!w.revealed.every(r => x[r.i] === r.c)) return false;
-      if (w.knownAbsent.some(ch => x.includes(ch))) return false;
-      for (const g of w.guesses) {
-        const m = WordData.judgeGuess(g.word, x);
-        for (let i = 0; i < m.length; i++) if (m[i] !== g.marks[i]) return false;
-      }
-      return true;
-    });
-  }
-
-  function emit(b, ev) { b.events.push(ev); return ev; }
-  function drainEvents(b) { const e = b.events; b.events = []; return e; }
-
-  const alive = (b) => b.enemies.filter(e => e.hp > 0);
-  function targetEnemy(b) {
-    if (b.enemies[b.target] && b.enemies[b.target].hp > 0) return b.enemies[b.target];
+  const alive = (b) => b.foes.filter(f => f.hp > 0);
+  function targetFoe(b) {
+    if (b.foes[b.target] && b.foes[b.target].hp > 0) return b.foes[b.target];
     const a = alive(b);
-    if (a.length) { b.target = b.enemies.indexOf(a[0]); return a[0]; }
-    return b.enemies[0];
-  }
-  function setTarget(b, idx) {
-    if (b.enemies[idx] && b.enemies[idx].hp > 0) b.target = idx;
+    if (a.length) b.target = b.foes.indexOf(a[0]);
+    return a[0] || b.foes[0];
   }
 
-  /* ---------- word serving ---------- */
-  function allLearned(b, len) {
-    return WordData.POOLS[len].every(w => b.meta.learnedWords.has(w));
+  function say(b, msg) { b.log.push(msg); }
+
+  /* ---------------- the mystery word (ACQUIRE loop) ---------------- */
+  function unknownWords(run, lens) {
+    return Morph.LIST.filter(e => lens.includes(e.len) && !run.meta.solved.has(e.word));
   }
 
-  function serveWord(b, len) {
-    // Serves a fresh mystery word — learned words included. Engraved words do
-    // not fire on serve; instead each GUESS carries a resonance chance
-    // (b.player.resonance) to auto-fire a known mystery word. Fully-mastered
-    // lengths reveal free letters so the word can be deduced from the grimoire.
-    b.wordLen = len;
-    const pool = WordData.POOLS[len];
-    const prev = b.word ? b.word.answer : null;
-    let answer = pick(b.rng, pool);
-    if (pool.length > 1 && answer === prev) answer = pick(b.rng, pool);
-    const everyKnown = allLearned(b, len);
-    b.word = {
-      answer, len,
-      guesses: [], revealed: [], knownAbsent: [], vowelInfo: null,
-      served: true,
-    };
-    let freeLetters = 0;
-    if (everyKnown) freeLetters += 1 + relicMod(b, 'masteryReveal');
-    if (b.condition && b.condition.wordFreeReveal) freeLetters += b.condition.wordFreeReveal;
-    if (b.sigils && b.sigils.includes(answer)) freeLetters += 1; // prepared sigil
-    freeLetters = Math.min(len - 2, freeLetters);
-    for (let i = 0; i < freeLetters; i++) revealLetter(b, true);
-    // relic assistance on every fresh word
-    const prune = relicMod(b, 'pruneOnServe');
-    if (prune) pruneLetters(b, prune);
-    if (relicMod(b, 'vowelOnServe')) revealVowels(b);
-    emit(b, { type: 'wordServed', len, freeLetters });
+  // Inscribe every part a word is built from; returns the NEW notes.
+  function inscribeParts(meta, entry) {
+    const fresh = [];
+    for (const pid of entry.parts) {
+      if (!meta.parts.has(pid)) { meta.parts.add(pid); fresh.push(pid); }
+    }
+    return fresh;
   }
 
-  /* Engraving resonance: rolled once after each guess. If the (possibly just
-   * served) mystery word is engraved in the grimoire, it may fire itself. */
-  function rollResonance(b) {
-    if (b.over || !b.word || b.player.sewn) return;
-    if (!b.meta.learnedWords.has(b.word.answer)) return;
-    const sigilBonus = b.sigils && b.sigils.includes(b.word.answer) ? 0.2 : 0;
-    if (b.rng() >= b.player.resonance + sigilBonus) return;
-    const w = b.word.answer;
-    emit(b, { type: 'autocast', word: w });
-    b.stats.autoCasts++;
-    castSpell(b, w, { auto: true });
-    if (!b.over) serveWord(b, b.wordLen);
+  // Serve lengths grow with the grimoire's notes: short words first, the
+  // long weaves once the grammar starts to open. (64 notes total.)
+  function servableLens(run) {
+    const n = run.meta.parts.size;
+    if (n < 10) return [4, 5];
+    if (n < 16) return [4, 5, 6];
+    if (n < 24) return [5, 6, 7];
+    if (n < 36) return [6, 7, 8];
+    return [7, 8, 9, 10];
   }
 
-  function revealLetter(b, free) {
-    const w = b.word;
-    if (!w) return false;
-    const unrevealed = [];
-    for (let i = 0; i < w.answer.length; i++) if (!w.revealed.some(r => r.i === i)) unrevealed.push(i);
-    if (!unrevealed.length) return false;
-    const i = pick(b.rng, unrevealed);
-    w.revealed.push({ i, c: w.answer[i], free: !!free });
-    emit(b, { type: 'reveal', i, c: w.answer[i] });
+  function serveMystery(b) {
+    const lens = servableLens(b.run);
+    let pool = unknownWords(b.run, lens);
+    if (!pool.length) pool = Morph.LIST.filter(e => !b.run.meta.solved.has(e.word));
+    if (!pool.length) pool = Morph.LIST; // omniscient player: serve anything
+    const e = pick(b.rng, pool);
+    b.mystery = { answer: e.word, len: e.len, guesses: [], revealed: [] };
+    say(b, `📜 A ${e.len}-rune mystery word waits on the loom's margin.`);
+  }
+
+  function judge(guess, answer) {
+    const marks = new Array(guess.length).fill('absent');
+    const pool = {};
+    for (let i = 0; i < answer.length; i++) {
+      if (guess[i] === answer[i]) marks[i] = 'hit';
+      else pool[answer[i]] = (pool[answer[i]] || 0) + 1;
+    }
+    for (let i = 0; i < guess.length; i++) {
+      if (marks[i] === 'hit') continue;
+      if (pool[guess[i]] > 0) { marks[i] = 'near'; pool[guess[i]]--; }
+    }
+    return marks;
+  }
+
+  function canGuess(b) { return !b.over && !!b.mystery && !b.guessedThisTurn; }
+
+  function guess(b, raw) {
+    if (!canGuess(b)) return { ok: false, reason: 'spent' };
+    const g = String(raw || '').toUpperCase().replace(/[^A-Z]/g, '');
+    const m = b.mystery;
+    if (g.length !== m.len) return { ok: false, reason: 'length' };
+    if (b.cursedLetter && g.includes(b.cursedLetter)) return { ok: false, reason: 'cursed' };
+    b.guessedThisTurn = true;
+    const marks = judge(g, m.answer);
+    m.guesses.push({ word: g, marks });
+    const correct = g === m.answer;
+    if (correct) {
+      const word = m.answer;
+      const entry = Morph.WORDS[word];
+      b.run.meta.solved.add(word);
+      b.stats.solves++;
+      const fresh = inscribeParts(b.run.meta, entry);
+      b.stats.notes.push(...fresh);
+      say(b, `🌟 <b>${word}</b> — spoken true!`);
+      if (fresh.length) {
+        const titles = fresh.map(pid => Morph.PARTS[pid].title).join(' · ');
+        say(b, `✒️ New notes in your grimoire: <b>${titles}</b> — yours forever.`);
+      } else {
+        say(b, '✒️ Its grammar was already yours — the solving was pure craft.');
+      }
+      castWordFx(b, word, SOLVE_MULT, 'solved');
+      if (!b.over) serveMystery(b);
+      return { ok: true, correct: true, marks, notes: fresh };
+    }
+    return { ok: true, correct: false, marks };
+  }
+
+  function revealLetter(b) {
+    const m = b.mystery;
+    if (!m) return false;
+    const hidden = [];
+    for (let i = 0; i < m.answer.length; i++) if (!m.revealed.some(r => r.i === i)) hidden.push(i);
+    if (!hidden.length) return false;
+    const i = pick(b.rng, hidden);
+    m.revealed.push({ i, c: m.answer[i] });
+    say(b, `✨ Light falls on the mystery word — rune ${i + 1} is <b>${m.answer[i]}</b>.`);
     return true;
   }
 
-  function pruneLetters(b, n) {
-    const w = b.word;
-    if (!w) return;
-    const inWord = new Set(w.answer.split(''));
-    const candidates = [];
-    for (let c = 65; c <= 90; c++) {
-      const ch = String.fromCharCode(c);
-      if (!inWord.has(ch) && !w.knownAbsent.includes(ch)) candidates.push(ch);
+  /* ---------------- spelling from the loom (DEPLOY loop) ---------------- */
+  // Which tray tiles would spell this word? null if impossible.
+  function tilesFor(b, word) {
+    const avail = b.tray.filter(t => !t.frozen);
+    const used = [];
+    const pool = avail.slice();
+    for (const ch of word) {
+      const idx = pool.findIndex(t => t.ch === ch);
+      if (idx < 0) return null;
+      used.push(pool.splice(idx, 1)[0]);
     }
-    for (let k = 0; k < n && candidates.length; k++) {
-      const idx = Math.floor(b.rng() * candidates.length);
-      w.knownAbsent.push(candidates.splice(idx, 1)[0]);
+    return used;
+  }
+  const canSpell = (b, word) => !!tilesFor(b, word);
+
+  function spellableWords(b) {
+    // every READABLE word (all its parts inscribed) the current tray can pay for
+    const out = [];
+    for (const e of Morph.LIST) {
+      if (Morph.canRead(b.run.meta.parts, e) && canSpell(b, e.word)) out.push(e);
     }
-    emit(b, { type: 'prune', letters: w.knownAbsent.slice() });
+    return out.sort((a, z) => z.len - a.len || (a.word < z.word ? -1 : 1));
   }
 
-  function revealVowels(b) {
-    const w = b.word;
-    if (!w) return;
-    const info = {};
-    for (const v of ['A', 'E', 'I', 'O', 'U']) info[v] = w.answer.includes(v) ? 'present' : 'absent';
-    w.vowelInfo = info;
-    emit(b, { type: 'vowels', info });
-  }
-
-  /* ---------- scry: free deduction, once per turn (+relics) ---------- */
-  function canScry(b) {
-    if (b.condition && b.condition.noScry) return false;
-    return !b.over && b.word && b.player.scryLeft > 0;
-  }
-  function scry(b, letter) {
-    if (!canScry(b)) return { ok: false };
-    letter = String(letter || '').toUpperCase();
-    if (!/^[A-Z]$/.test(letter)) return { ok: false };
-    const w = b.word;
-    b.player.scryLeft--;
-    const present = w.answer.includes(letter);
-    if (!present && !w.knownAbsent.includes(letter)) w.knownAbsent.push(letter);
-    if (present) {
-      w.vowelInfo = w.vowelInfo || {};
-      if (!w.vowelInfo[letter]) w.vowelInfo[letter] = 'present';
+  function castWord(b, word) {
+    if (b.over) return { ok: false, reason: 'over' };
+    word = String(word || '').toUpperCase();
+    const entry = Morph.WORDS[word];
+    if (!entry) return { ok: false, reason: 'not-a-word' };
+    const tiles = tilesFor(b, word);
+    if (!tiles) return { ok: false, reason: 'tiles' };
+    const readable = Morph.canRead(b.run.meta.parts, entry);
+    // spend the tiles
+    for (const t of tiles) b.tray.splice(b.tray.indexOf(t), 1);
+    if (readable) { b.stats.casts++; castWordFx(b, word, 1, 'cast'); }
+    else {
+      b.stats.improvs++;
+      say(b, `〰 You improvise <b>${word}</b> — its grammar escapes you, so it carries half its strength.`);
+      castWordFx(b, word, IMPROV_MULT, 'improvised');
     }
-    emit(b, { type: 'scry', letter, present });
-    return { ok: true, present };
+    return { ok: true, inscribed: readable };
   }
 
-  /* ---------- elements: fire / frost / venom / storm ---------- */
-  function elemRelation(enemy, elem) {
-    const a = enemy && enemy.affinity;
-    if (!elem || !a) return null;
-    if (a.immune === elem) return 'immune';
-    if (a.weakTo === elem) return 'weak';
-    if (a.resist === elem) return 'resist';
-    return null;
-  }
-  // Full elemental multiplier vs one foe (class attunement + affinity).
-  function elemScale(b, enemy, elem) {
-    if (!elem) return 1;
-    let m = b.cls.elemMult || 1;
-    const rel = elemRelation(enemy, elem);
-    if (rel === 'immune') return 0;
-    if (rel === 'weak') m *= 1.5;
-    else if (rel === 'resist') m *= 0.5;
-    return m;
+  function elemMult(foe, elId) {
+    if (foe.weakTo === elId) return 1.5;
+    if (foe.resist === elId) return 0.5;
+    return 1;
   }
 
-  /* ---------- damage plumbing ---------- */
-  function hitEnemy(b, enemy, base, tag, elem) {
-    let d = Math.max(0, base);
-    const rel = elemRelation(enemy, elem);
-    if (elem && b.cls.elemMult) d = Math.round(d * b.cls.elemMult);
-    if (rel === 'immune') d = 0;
-    else if (rel === 'weak') d = Math.floor(d * 1.5);
-    else if (rel === 'resist') d = Math.floor(d * 0.5);
-    if (b.player.weak > 0) d = Math.floor(d * 0.75);
-    if (enemy.vuln > 0) d = Math.floor(d * 1.5);
-    const absorbed = Math.min(enemy.block, d);
-    enemy.block -= absorbed;
-    const hpLoss = d - absorbed;
-    enemy.hp -= hpLoss;
-    emit(b, { type: 'enemyHit', amount: d, hpLoss, tag: tag || 'attack', idx: b.enemies.indexOf(enemy), elem: elem || null, elemRel: rel });
-    if (enemy.hp <= 0) {
-      enemy.hp = 0;
-      emit(b, { type: 'enemyDown', idx: b.enemies.indexOf(enemy), name: enemy.name });
-      const bonus = relicMod(b, 'insightOnKill');
-      if (bonus && alive(b).length) { gainInsight(b, bonus); emit(b, { type: 'insight', amount: bonus }); }
-    }
+  function hitFoe(b, foe, dmg, elId) {
+    const mult = elemMult(foe, elId);
+    const d = Math.max(0, Math.round(dmg * mult));
+    foe.hp -= d;
+    const tag = mult > 1 ? ' — it fears this!' : mult < 1 ? ' (resisted)' : '';
+    say(b, `⚔ ${foe.icon} ${foe.name} takes <b>${d}</b>${tag}`);
+    if (foe.hp <= 0) { foe.hp = 0; say(b, `✝ ${foe.name} is unwritten.`); }
+    checkEnd(b);
     return d;
-  }
-
-  function playerDealDamage(b, base, hits, tag, opts) {
-    opts = opts || {};
-    hits = hits || 1;
-    let total = 0;
-    const parried = new Set(); // a parry negates the whole card vs that foe
-    for (let h = 0; h < hits; h++) {
-      const targets = opts.aoe ? alive(b) : [targetEnemy(b)].filter(e => e && e.hp > 0);
-      if (!targets.length) break;
-      for (const e of targets) {
-        if (parried.has(e)) continue;
-        if (tag === 'card' && e.posture === 'parry' && !e._parried) {
-          e._parried = true;
-          parried.add(e);
-          emit(b, { type: 'parried', idx: b.enemies.indexOf(e), name: e.name });
-          continue;
-        }
-        let dmg = base + b.player.str;
-        if (opts.execute && e.hp <= e.maxHp * 0.25) dmg += opts.execute;
-        total += hitEnemy(b, e, dmg, tag, opts.elem);
-      }
-    }
-    checkBattleEnd(b);
-    return total;
-  }
-
-  function damagePlayer(b, amount, source) {
-    let d = Math.max(0, amount);
-    const absorbed = Math.min(b.player.block, d);
-    b.player.block -= absorbed;
-    const hpLoss = d - absorbed;
-    b.player.hp -= hpLoss;
-    emit(b, { type: 'playerHit', amount: d, hpLoss, source: source || 'enemy' });
-    checkBattleEnd(b);
-    return hpLoss;
-  }
-
-  function gainBlock(b, n) {
-    const amt = n + b.player.wardBonus;
-    b.player.block += amt;
-    emit(b, { type: 'block', amount: amt });
   }
 
   function healPlayer(b, n) {
     const amt = Math.min(n, b.player.maxHp - b.player.hp);
-    b.player.hp += amt;
-    if (amt > 0) emit(b, { type: 'heal', amount: amt });
+    if (amt > 0) { b.player.hp += amt; say(b, `💚 You mend <b>${amt}</b>.`); }
   }
 
-  function checkBattleEnd(b) {
-    if (b.over) return;
-    if (!alive(b).length) {
-      b.over = true; b.won = true;
-      // attunement spoils: bonus aurum per extra length attuned
-      const extra = Math.max(0, b.lengthsCast.length - 1);
-      if (extra) { b.goldGained += extra * 6; emit(b, { type: 'gold', amount: extra * 6, why: 'attunement' }); }
-      emit(b, { type: 'victory' });
-    } else if (b.player.hp <= 0) {
-      b.player.hp = 0; b.over = true; b.won = false; emit(b, { type: 'defeat' });
+  // Apply a word's fx at a multiplier. Used for casts, solves, improvs,
+  // verse pulses and blooms.
+  function castWordFx(b, word, mult, how) {
+    const entry = Morph.WORDS[word];
+    const el = Morph.EL_BY_ID[entry.el];
+    let fx = entry.fx;
+    if (how !== 'bloom') say(b, `${el.icon} <b>${word}</b> — ${entry.name}${mult !== 1 ? ` ×${mult}` : ''}`);
+    applyFx(b, fx, el, mult, entry);
+    // chained recast (the Chain center)
+    let chains = 0;
+    while (fx.chain && !b.over && chains < 3 && b.rng() < fx.chain) {
+      chains++;
+      say(b, `⛓ <b>${word}</b> chains itself — again, freely!`);
+      applyFx(b, fx, el, mult, entry);
     }
   }
 
-  /* ---------- schools, attunement, spells ---------- */
-  const ATTUNE_TIERS = {
-    2: { insight: 1 },
-    3: { energyMax: 1 },
-    4: { insight: 2, energyNow: 1 },
-    5: { str: 3 },
-    6: { energyMax: 1, insight: 3 },
-  };
-
-  function noteAttunement(b, len) {
-    if (b.lengthsCast.includes(len)) return;
-    b.lengthsCast.push(len);
-    const tier = b.lengthsCast.length;
-    const bonus = ATTUNE_TIERS[tier];
-    if (!bonus) return;
-    const chalice = relicMod(b, 'attuneBonus');
-    if (bonus.insight) gainInsight(b, bonus.insight);
-    if (bonus.energyMax) b.player.maxEnergy += bonus.energyMax;
-    if (bonus.energyNow || chalice) b.player.energy += (bonus.energyNow || 0) + chalice;
-    if (bonus.str) b.player.str += bonus.str;
-    emit(b, { type: 'attune', tier, bonus, chalice });
-  }
-
-  function schoolComboApply(b, school, prior, fx, multRef) {
-    // Returns adjusted fx additions applied post-cast; multRef.mult may change.
-    switch (school) {
-      case 'astral': multRef.mult *= 1 + Math.min(0.75, 0.25 * prior); break;
-      case 'aegian': if (prior) { b.player.thorns += 2 * prior; healPlayer(b, 3 * prior); } break;
-      case 'ignium': if (prior && (fx.burn || fx.dmg)) fx._burnBonus = 3 * prior; break;
-      case 'pestis': if (prior && (fx.poison || fx.dmg)) fx._poisonBonus = 3 * prior; break;
-      case 'sanguine': if (prior) fx._healBonus = 4 * prior; break;
-      case 'umbral': if (prior) fx._durBonus = Math.min(2, prior); break;
-      case 'mentis': if (prior) { gainInsight(b, prior); emit(b, { type: 'insight', amount: prior }); } break;
-      case 'fulmen': if (prior % 2 === 1) fx._stunBonus = 1; break;
-    }
-  }
-
-  function applySpellFx(b, fx, mult) {
-    const tgt = targetEnemy(b);
-    const aoe = !!fx.aoe;
-    const burnBonus = (fx._burnBonus || 0) + relicMod(b, 'burnBonus');
-    const poisonBonus = (fx._poisonBonus || 0) + relicMod(b, 'poisonBonus');
-    const durBonus = fx._durBonus || 0;
-
-    if (fx.dmg) playerDealDamage(b, Math.round(fx.dmg * mult) + relicMod(b, 'spellDmg'), fx.hits || 1, 'spell',
-      { aoe, execute: fx.execute || 0, elem: fx.elem });
-    if (fx.nihil) { // The Great Nothing: erase a fraction of every foe's vitality
-      for (const e of alive(b)) {
-        const loss = Math.floor(e.hp * fx.nihil);
-        e.hp -= loss;
-        emit(b, { type: 'enemyHit', amount: loss, hpLoss: loss, tag: 'spell', idx: b.enemies.indexOf(e) });
-        if (e.hp <= 0) { e.hp = 0; emit(b, { type: 'enemyDown', idx: b.enemies.indexOf(e), name: e.name }); }
+  function applyFx(b, fx, el, mult, entry) {
+    const M = (n) => Math.max(0, Math.round(n * mult));
+    const tgt = targetFoe(b);
+    const victims = fx.aoe ? alive(b) : (tgt && tgt.hp > 0 ? [tgt] : []);
+    let dealt = 0;
+    for (const f of victims) {
+      if (fx.dmg) {
+        let d = fx.dmg;
+        if (fx.wild) d = d * (1 - fx.wild + b.rng() * fx.wild * 2); // storm swings
+        dealt += hitFoe(b, f, M(d), el.id);
       }
-      checkBattleEnd(b);
-    }
-    if (fx.block) gainBlock(b, Math.round(fx.block * mult));
-    if (fx.heal) healPlayer(b, Math.round(fx.heal * mult) + (fx._healBonus || 0));
-    else if (fx._healBonus) healPlayer(b, fx._healBonus);
-
-    const applyTo = aoe ? alive(b) : (tgt && tgt.hp > 0 ? [tgt] : []);
-    for (const e of applyTo) {
-      const es = fx.elem ? elemScale(b, e, fx.elem) : 1; // affinity gates elemental dots too
-      if (fx.burn || burnBonus && fx.dmg) {
-        const amt = Math.round((Math.round((fx.burn || 0) * mult) + burnBonus) * es);
-        if (amt > 0) { e.burn += amt; e.burnTurns = Math.max(e.burnTurns, 2); }
+      if (fx.burn && f.hp > 0) {
+        const scaled = Math.round(M(fx.burn) * elemMult(f, el.id));
+        if (scaled > 0) { f.burn += scaled; f.burnTurns = Math.max(f.burnTurns, fx.burnTurns || 2); }
       }
-      if (fx.poison || poisonBonus && fx.dmg) {
-        const amt = Math.round((Math.round((fx.poison || 0) * mult) + poisonBonus) * es);
-        if (amt > 0) e.poison += amt;
+      if (fx.poison && f.hp > 0) {
+        const scaled = Math.round(M(fx.poison) * elemMult(f, el.id));
+        if (scaled > 0) f.poison += scaled;
       }
-      if (fx.weak) e.weak += fx.weak + durBonus;
-      if (fx.vuln) e.vuln += fx.vuln + durBonus;
-      if (fx.blind) e.blind += fx.blind + durBonus;
-      if (fx.stun || fx._stunBonus) e.stun += (fx.stun || 0) + (fx._stunBonus || 0);
+      if (fx.chill && f.hp > 0) f.chill = Math.max(f.chill, fx.chill);
+      if (fx.blind && f.hp > 0) f.blind += fx.blind;
+      if (fx.stunChance && f.hp > 0 && b.rng() < fx.stunChance) { f.stun += 1; say(b, `💫 ${f.name} reels, stunned!`); }
     }
-    if (fx.str) b.player.str += Math.round(fx.str * mult);
-    if (fx.insight) gainInsight(b, Math.round(fx.insight * mult));
-    if (fx.energyNow) { b.player.energy += fx.energyNow; emit(b, { type: 'energy', amount: fx.energyNow }); }
-    if (fx.energyMax) { b.player.maxEnergy += fx.energyMax; b.player.energy += fx.energyMax; emit(b, { type: 'energyMax', amount: fx.energyMax }); }
-    if (fx.freeGuess) b.player.freeGuesses += fx.freeGuess;
-    if (fx.scryFree) b.player.scryLeft += fx.scryFree;
+    if (fx.drain && dealt > 0) healPlayer(b, Math.round(dealt * fx.drain));
+    if (fx.block) { b.player.block += M(fx.block); say(b, `🛡 Stone rises: +${M(fx.block)}.`); }
+    if (fx.mirrorBlock) b.player.block += fx.mirrorBlock;
+    if (fx.heal) healPlayer(b, M(fx.heal));
+    if (fx.maxHp) { b.player.maxHp += fx.maxHp; b.player.hp += fx.maxHp; }
+    if (fx.cleanse && b.cursedLetter) { b.cursedLetter = null; say(b, '💧 The inked-out letter washes clean.'); }
+    if (fx.gust) {
+      for (let i = 0; i < fx.gust; i++) if (b.tray.length < b.traySize + 2) b.tray.push(drawTile(b.rng, b.bag));
+      say(b, `🌬 The wind carries ${fx.gust} fresh tile${fx.gust > 1 ? 's' : ''} to your loom.`);
+    }
     if (fx.reveal) for (let i = 0; i < fx.reveal; i++) revealLetter(b);
-    if (fx.draw) drawCards(b, fx.draw);
-    if (fx.thorns) b.player.thorns += fx.thorns;
-    if (fx.selfDmg) damagePlayer(b, fx.selfDmg, 'self');
-  }
-
-  function castSpell(b, word, opts) {
-    opts = opts || {};
-    if (b.player.sewn) { emit(b, { type: 'sewn' }); return null; }
-    const spell = WordData.SPELLS[word];
-    if (!spell) return null;
-    let mult = 1;
-    const isPower = spell.power;
-    if (opts.firstGuess) mult *= FIRST_GUESS_MULT;
-    if (isPower) mult *= POWER_MULT;
-    if (opts.tomeMult) mult *= opts.tomeMult;
-    if (spell.school === b.resonantSchool) mult *= 1.3; // battle's resonant school
-    if (b.player.streak >= 4) mult *= 1.15;             // hot streak
-    if (b.player.echo) { mult *= 1 + b.player.echo / 100; b.player.echo = 0; }
-    const casts = b.player.twincast > 0 ? 2 : 1;
-    if (b.player.twincast > 0) b.player.twincast--;
-
-    // school combo
-    const school = spell.school;
-    const prior = b.schoolCasts[school] || 0;
-    const fx = Object.assign({}, spell.fx);
-    if (spell.elem) fx.elem = spell.elem;
-    const multRef = { mult };
-    schoolComboApply(b, school, prior, fx, multRef);
-    mult = multRef.mult;
-    b.schoolCasts[school] = prior + 1;
-
-    emit(b, {
-      type: 'spellCast', word, spell: spell.name, arch: spell.arch, school, icon: spell.icon,
-      mult, power: isPower, firstGuess: !!opts.firstGuess, auto: !!opts.auto, casts,
-      combo: prior > 0, sig: spell.sig,
-    });
-    for (let c = 0; c < casts; c++) { applySpellFx(b, fx, mult); if (b.over) break; }
-    b.stats.spellsCast++;
-    b.spellsThisBattle++;
-    if (isPower && !b.stats.powerWordsCast.includes(word)) b.stats.powerWordsCast.push(word);
-    if (b.cls.bladeCharge) { b.player.blade += b.cls.bladeCharge; emit(b, { type: 'blade', total: b.player.blade }); }
-    noteAttunement(b, spell.len);
-
-    // relic pulses
-    const hc = relicMod(b, 'healOnCast');
-    if (hc && !b.over) healPlayer(b, hc);
-    const se = relicMod(b, 'stunEvery');
-    if (se && b.spellsThisBattle % se === 0 && !b.over) {
-      const t = targetEnemy(b);
-      if (t && t.hp > 0) { t.stun += 1; emit(b, { type: 'relicStun', idx: b.enemies.indexOf(t) }); }
+    if (fx.bloom && entry && !b._blooming) {
+      b.player.blooms.push({ word: entry.word, turns: fx.bloom });
+      say(b, `🌱 <b>${entry.word}</b> takes seed — it will bloom again.`);
     }
-    if (opts.firstGuess) {
-      b.stats.firstGuessCasts++;
-      const fgi = relicMod(b, 'firstGuessInsight');
-      if (fgi) { gainInsight(b, fgi); emit(b, { type: 'insight', amount: fgi }); }
-    }
-    if (isPower && !b.meta.discoveredPower.has(word)) {
-      b.meta.discoveredPower.add(word);
-      b.stats.powerDiscovered.push(word);
-      emit(b, { type: 'powerDiscovered', word });
-    }
-    return spell;
-  }
-
-  /* ---------- guessing ----------
-   * Each guess costs b.player.guessCost insight (free guesses bypass this).
-   * Every CORRECT guess raises the cost by 1 for the rest of the turn —
-   * chaining casts in one turn gets expensive fast. Resets at turn start. */
-  function canGuess(b) {
-    if (b.player.sewn) return false;
-    return !!b.word && !b.over && (b.player.freeGuesses > 0 || b.player.insight >= b.player.guessCost);
-  }
-
-  function guess(b, raw) {
-    const w = b.word;
-    if (b.player.sewn) return { ok: false, reason: 'sewn' };
-    if (!w || b.over) return { ok: false, reason: 'no-word' };
-    const g = String(raw || '').toUpperCase().replace(/[^A-Z]/g, '');
-    if (g.length !== w.len) return { ok: false, reason: 'length' };
-    if (b.player.freeGuesses > 0) b.player.freeGuesses--;
-    else if (b.player.insight >= b.player.guessCost) b.player.insight -= b.player.guessCost;
-    else return { ok: false, reason: 'insight' };
-
-    const marks = WordData.judgeGuess(g, w.answer);
-    w.guesses.push({ word: g, marks });
-    for (let i = 0; i < g.length; i++) {
-      if (marks[i] === 'absent' && !w.answer.includes(g[i]) && !w.knownAbsent.includes(g[i])) {
-        w.knownAbsent.push(g[i]);
-      }
-    }
-    const correct = g === w.answer;
-    emit(b, { type: 'guess', word: g, marks, correct, guessNum: w.guesses.length });
-
-    if (correct) {
-      const firstGuess = w.guesses.length === 1;
-      const newlyLearned = !b.meta.learnedWords.has(g);
-      if (newlyLearned) {
-        b.meta.learnedWords.add(g);
-        b.stats.wordsLearned.push(g);
-        emit(b, { type: 'wordLearned', word: g });
-      }
-      if (b.player.refundOnCorrect) gainInsight(b, 1);
-      b.stats.solves.push({ len: w.len, guesses: w.guesses.length });
-      b.player.guessCost++;
-      emit(b, { type: 'guessCostUp', cost: b.player.guessCost });
-      // streak: first correct guess of the turn extends the chain
-      if (!b._correctThisTurn) {
-        b._correctThisTurn = true;
-        b.player.streak++;
-        const tier = b.player.streak;
-        if (tier === 1) { /* the chain begins */ }
-        else if (tier === 2) gainInsight(b, 1);
-        else if (tier === 3) { b.player.energy += 1; emit(b, { type: 'energy', amount: 1 }); }
-        else if (tier === 4) b.player.scryLeft += 1;
-        emit(b, { type: 'streak', streak: tier });
-      }
-      castSpell(b, g, { firstGuess });
-      if (!b.over) serveWord(b, b.wordLen);
-      rollResonance(b);
-      return { ok: true, correct: true, firstGuess, marks };
-    }
-    rollResonance(b);
-    return { ok: true, correct: false, marks };
-  }
-
-  function changeWordLength(b, len) {
-    if (b.over) return;
-    serveWord(b, len);
-  }
-
-  /* ---------- the Forbidden Word ----------
-   * One attempt per run. Correct: the forbidden spell detonates and is
-   * mastered. Wrong: the tome sews your mouth shut for the rest of the run.
-   * Run-level state (fragments, attempted, sewn) lives with the caller. */
-  function speakForbidden(b, spoken, forbiddenDef) {
-    spoken = String(spoken || '').toUpperCase().replace(/[^A-Z]/g, '');
-    const correct = spoken === forbiddenDef.word;
-    emit(b, { type: 'forbiddenSpoken', word: spoken, correct, name: forbiddenDef.name });
-    if (correct) {
-      const multRef = { mult: 1 };
-      applySpellFx(b, forbiddenDef.fx, multRef.mult);
-      b.stats.spellsCast++;
-    } else {
-      b.player.sewn = true;
-    }
-    return { correct };
-  }
-
-  /* ---------- playing cards ---------- */
-  function effectiveCost(b, card) {
-    let c = card.cost;
-    if (card.inscribed) {
-      const sp = WordData.SPELLS[card.inscribed];
-      if (sp && sp.school === b.resonantSchool) c -= 1; // resonant hour favors its own school
-    }
-    if (b.condition && b.condition.costCap != null) c = Math.min(c, b.condition.costCap);
-    return Math.max(0, c);
-  }
-  function canAfford(b, card) { return b.player.energy >= effectiveCost(b, card); }
-
-  function playCard(b, inst, choice) {
-    if (b.over) return { ok: false, reason: 'over' };
-    const idx = b.hand.findIndex(c => c.inst === inst);
-    if (idx < 0) return { ok: false, reason: 'not-in-hand' };
-    const card = b.hand[idx];
-    const fx = card.fx;
-    const cost = effectiveCost(b, card);
-    if (b.player.energy < cost) return { ok: false, reason: 'energy' };
-
-    if (choice && choice.targetIdx != null) setTarget(b, choice.targetIdx);
-
-    if (fx.castTome) {
-      if (b.player.sewn) return { ok: false, reason: 'sewn' };
-      const word = choice && choice.tomeWord;
-      if (!word || !b.meta.learnedWords.has(word)) return { ok: false, reason: 'need-word' };
-      const tcost = Math.max(0, word.length - 4 - (fx.castDiscount || 0) - b.player.castDiscount);
-      if (b.player.insight < tcost) return { ok: false, reason: 'insight' };
-      b.player.energy -= cost;
-      b.player.insight -= tcost;
-      b._cardsThisTurn = (b._cardsThisTurn || 0) + 1;
-      b._lastCardType = 'skill';
-      emit(b, { type: 'cardPlayed', card: cardView(card) });
-      castSpell(b, word, { tomeMult: fx.castTome * (b.cls.tomeMult || 1) });
-      postureHooks(b, cost);
-      afterPlay(b, idx, card);
-      return { ok: true };
-    }
-
-    b.player.energy -= cost;
-    b._cardsThisTurn = (b._cardsThisTurn || 0) + 1;
-    emit(b, { type: 'cardPlayed', card: cardView(card) });
-
-    // flow: alternating attack/skill sharpens the sequence (+2 primary effect);
-    // held cards carry a sharpen edge (+1 per turn held, capped)
-    const isAttack = !!(fx.dmg || fx.dmgPerLearned || fx.dmgPerInsight || fx.dmgFromBlock || fx.dmgPerAttuned);
-    const kind = isAttack ? 'attack' : 'skill';
-    let boost = card.sharpen || 0;
-    if (b._lastCardType && b._lastCardType !== kind) {
-      boost += 2;
-      emit(b, { type: 'flow', bonus: 2 });
-    }
-    b._lastCardType = kind;
-
-    if (fx.selfDmg) damagePlayer(b, fx.selfDmg, 'self');
-    if (isAttack) {
-      let base = (fx.dmg || 0) + b.player.blade + boost; // Inkblade charge rides attacks
-      if (fx.dmgPerLearned) base += fx.dmgPerLearned * b.meta.learnedWords.size;
-      if (fx.dmgPerInsight) base += fx.dmgPerInsight * b.player.insight;
-      if (fx.dmgFromBlock) base += b.player.block;
-      if (fx.dmgPerAttuned) base += fx.dmgPerAttuned * b.lengthsCast.length;
-      playerDealDamage(b, base, fx.hits || 1, 'card', { aoe: !!fx.aoe, elem: fx.elem });
-    }
-    if (fx.block || fx.blockPerLearned) {
-      let base = fx.block || 0;
-      if (!isAttack) { base += boost; boost = 0; }
-      if (fx.blockPerLearned) base += fx.blockPerLearned * b.meta.learnedWords.size;
-      gainBlock(b, base);
-    }
-    if (fx.insight) { gainInsight(b, fx.insight); emit(b, { type: 'insight', amount: fx.insight }); }
-    if (fx.energyNow) { b.player.energy += fx.energyNow; emit(b, { type: 'energy', amount: fx.energyNow }); }
-    if (fx.energyMax) { b.player.maxEnergy += fx.energyMax; b.player.energy += fx.energyMax; emit(b, { type: 'energyMax', amount: fx.energyMax }); }
-    if (fx.resonance) b.player.resonance += fx.resonance / 100;
-    if (fx.freeGuess) b.player.freeGuesses += fx.freeGuess;
-    if (fx.insightRune) b.player.insightRune += fx.insightRune;
-    if (fx.reveal) for (let i = 0; i < fx.reveal; i++) revealLetter(b);
-    if (fx.pruneLetters) pruneLetters(b, fx.pruneLetters);
-    if (fx.revealVowels) revealVowels(b);
-    if (fx.refundOnCorrect) b.player.refundOnCorrect = true;
-    if (fx.castDiscount && !fx.castTome) b.player.castDiscount += fx.castDiscount;
-    if (fx.draw) drawCards(b, fx.draw);
-    if (fx.heal) { healPlayer(b, fx.heal + (!isAttack && !fx.block && !fx.blockPerLearned ? boost : 0)); }
-    if (fx.regen) b.player.regen += fx.regen;
-    if (fx.maxHp) { b.player.maxHp += fx.maxHp; b.player.hp += fx.maxHp; b.maxHpGained += fx.maxHp; }
-    if (fx.str) b.player.str += fx.str;
-    if (fx.wardBonus) b.player.wardBonus += fx.wardBonus;
-    // enemy-status card effects hit the current target (or all if aoe)
-    const applyTo = fx.aoe ? alive(b) : [targetEnemy(b)].filter(e => e && e.hp > 0);
-    for (const e of applyTo) {
-      const es = fx.elem ? elemScale(b, e, fx.elem) : 1; // affinity gates elemental dots too
-      if (fx.weak) e.weak += fx.weak;
-      if (fx.vuln) e.vuln += fx.vuln;
-      if (fx.poison) { const amt = Math.round((fx.poison + relicMod(b, 'poisonBonus')) * es); if (amt > 0) e.poison += amt; }
-      if (fx.burn) { const amt = Math.round((fx.burn + relicMod(b, 'burnBonus')) * es); if (amt > 0) { e.burn += amt; e.burnTurns = Math.max(e.burnTurns, 2); } }
-      if (fx.stun) e.stun += fx.stun;
-    }
-    if (fx.cleanse) { b.player.weak = 0; b.player.vuln = 0; }
-    if (fx.thorns) b.player.thorns += fx.thorns;
-    if (fx.echo) b.player.echo += fx.echo;
-    if (fx.twincast) b.player.twincast += 1;
-    if (fx.goldGain) { b.goldGained += fx.goldGain; emit(b, { type: 'gold', amount: fx.goldGain }); }
-    if (fx.castRandom && b.meta.learnedWords.size) {
-      const words = Array.from(b.meta.learnedWords);
-      castSpell(b, pick(b.rng, words), {});
-    }
-
-    checkBattleEnd(b);
-    postureHooks(b, cost);
-    afterPlay(b, idx, card);
-    return { ok: true };
-  }
-
-  /* Enemy postures react to HOW you play, not what you play. */
-  function postureHooks(b, cost) {
-    if (b.over) return;
-    // ink-drinker: a card that cost nothing is free ink — it drinks
-    if (cost === 0) {
-      for (const e of alive(b)) {
-        if (e.posture !== 'inkdrinker') continue;
-        const amt = Math.round(4 * e.dmgMult);
-        e.hp = Math.min(e.maxHp, e.hp + amt);
-        emit(b, { type: 'inkdrink', idx: b.enemies.indexOf(e), amount: amt });
-      }
-    }
-    // retaliation: every card beyond your 2nd each turn draws a counterblow
-    if (b._cardsThisTurn > 2) {
-      for (const e of alive(b)) {
-        if (e.posture !== 'retaliation') continue;
-        emit(b, { type: 'retaliate', idx: b.enemies.indexOf(e), name: e.name });
-        damagePlayer(b, Math.max(2, Math.round(3 * e.dmgMult)), 'retaliation');
-        if (b.over) break;
-      }
+    if (fx.versePulse && entry && !b._blooming) {
+      // the Verse contains its element's Word (L5) — it echoes after
+      const l5 = Morph.LIST.find(e => e.el === entry.el && e.len === 5);
+      if (l5) { say(b, `🎶 The verse hums its inner word — <b>${l5.word}</b> echoes.`); castWordFx(b, l5.word, mult, 'bloom'); }
     }
   }
 
-  function afterPlay(b, idx, card) {
-    b.hand.splice(idx, 1);
-    if (card.fx.exhaust || card.token) b.exhausted.push(card);
-    else b.discard.push(card);
-  }
-
-  function cardView(c) {
-    return { inst: c.inst, id: c.id, name: c.name, rarity: c.rarity, cost: c.cost, fx: c.fx,
-             upgraded: c.upgraded, desc: CardData.describeFx(c.fx), flavor: c.flavor, token: c.token,
-             sharpen: c.sharpen || 0, inscribed: c.inscribed || null };
-  }
-
-  /* ---------- turn structure ---------- */
-  function drawCards(b, n) {
-    for (let i = 0; i < n; i++) {
-      if (b.hand.length >= b.handCap) return;
-      if (!b.drawPile.length) {
-        if (!b.discard.length) return;
-        b.drawPile = shuffle(b.rng, b.discard);
-        b.discard = [];
-      }
-      const c = b.drawPile.pop();
-      b.hand.push(c);
-      emit(b, { type: 'draw', card: cardView(c) });
-    }
-  }
-
-  function startPlayerTurn(b) {
-    if (b.over) return;
-    b.turn++;
-    b.player.block = 0;
-    b.player.energy = b.player.maxEnergy;
-    b.player.guessCost = 1; // cast-chain surcharge resets each turn
-    b.player.scryLeft = 1 + relicMod(b, 'scryPerTurn');
-    if (b.turn > 1 && !b._correctThisTurn && b.player.streak) {
-      b.player.streak = 0;
-      emit(b, { type: 'streakBroken' });
-    }
-    b._correctThisTurn = false;
-    b._cardsThisTurn = 0;
-    b._lastCardType = null;
-    for (const e of b.enemies) e._parried = false;
-    // hold-to-sharpen: cards kept in hand hone their edge (+1/turn, cap 3)
-    if (b.turn > 1) for (const c of b.hand) c.sharpen = Math.min(3, (c.sharpen || 0) + 1);
-    if (b.condition && b.condition.freeGuessPerTurn) b.player.freeGuesses += b.condition.freeGuessPerTurn;
-    const gain = b.cls.freeInsight + b.player.insightRune + relicMod(b, 'insightPerTurn');
-    if (gain) { gainInsight(b, gain); emit(b, { type: 'insight', amount: gain, free: true }); }
-    const bpt = relicMod(b, 'blockPerTurn');
-    if (bpt) gainBlock(b, bpt);
-    if (b.player.regen) healPlayer(b, b.player.regen);
-    let drawN = b.cls.draw + ((b.condition && b.condition.drawBonus) || 0);
-    if (b.turn === 1) drawN += 2 + relicMod(b, 'drawFirstTurn'); // opening hand: class draw + 2 (5 for 3-draw classes)
-    drawCards(b, drawN);
-    if (b.cls.alwaysDrawsCastTome && !b.hand.some(c => c.fx.castTome) && b.hand.length < b.handCap) {
-      const t = makeCard('casttome', false);
-      t.token = true; t.name = 'Conjured Tome';
-      b.hand.push(t);
-      emit(b, { type: 'draw', card: cardView(t) });
-    }
-    if (!b.word) {
-      // an unsolved word from the previous battle follows the run
-      if (b.turn === 1 && b._savedWord) {
-        b.word = b._savedWord;
-        b.wordLen = b._savedWord.len;
-        b._savedWord = null;
-        emit(b, { type: 'wordCarried', len: b.word.len });
-      } else {
-        serveWord(b, b.wordLen);
-      }
-    }
-    if (b.turn === 1 && relicMod(b, 'revealOnStart')) revealLetter(b);
-    emit(b, { type: 'turnStart', turn: b.turn });
-  }
-
-  function enemyIntent(b, enemy) {
-    const e = enemy || targetEnemy(b);
-    if (!e) return { kind: 'attack', n: 0 };
-    let move = e.pattern[e.patternIdx % e.pattern.length];
-    if (Array.isArray(move)) {
-      if (e._choiceIdx == null) e._choiceIdx = Math.floor(b.rng() * move.length);
-      move = move[e._choiceIdx];
-    }
-    return move;
-  }
-
-  function describeIntent(b, enemy) {
-    const e = enemy || targetEnemy(b);
-    const m = enemyIntent(b, e);
-    const scale = (n) => {
-      let d = Math.round(n * e.dmgMult) + e.str;
-      if (e.weak > 0) d = Math.floor(d * 0.75);
-      return d;
-    };
-    switch (m.kind) {
-      case 'attack': return { icon: '⚔️', text: m.hits > 1 ? `${scale(m.n)}×${m.hits}` : `${scale(m.n)}`, kind: 'attack' };
-      case 'block': return { icon: '🛡️', text: `${Math.round(m.n * e.dmgMult)}`, kind: 'block' };
-      case 'buff': return { icon: '💪', text: `+${m.str}`, kind: 'buff' };
-      case 'debuff': return { icon: '🌀', text: 'curse', kind: 'debuff' };
-      case 'leech': return { icon: '🧠', text: `−${m.insight} insight`, kind: 'leech' };
-      case 'smolder': return { icon: '🔥', text: `burn${m.n ? ' +' + scale(m.n) : ''}`, kind: 'smolder' };
-      case 'venom': return { icon: '☠️', text: `venom${m.n ? ' +' + scale(m.n) : ''}`, kind: 'venom' };
-      case 'heal': return { icon: '💚', text: `+${Math.round(m.n * e.dmgMult)}`, kind: 'heal' };
-      default: return { icon: '❔', text: '?', kind: 'unknown' };
-    }
-  }
-
-  function enemyAttack(b, e, n, hits) {
-    hits = hits || 1;
-    for (let h = 0; h < hits; h++) {
-      if (b.over) return;
-      if (e.blind > 0 && b.rng() < 0.5) {
-        emit(b, { type: 'enemyMiss', idx: b.enemies.indexOf(e) });
-        continue;
-      }
-      let d = Math.round(n * e.dmgMult) + e.str;
-      if (e.weak > 0) d = Math.floor(d * 0.75);
-      if (b.player.vuln > 0) d = Math.floor(d * 1.5);
-      damagePlayer(b, d, 'attack');
-      if (b.player.thorns > 0 && !b.over && e.hp > 0) {
-        const t = b.player.thorns;
-        const absorbed = Math.min(e.block, t);
-        e.block -= absorbed;
-        e.hp -= (t - absorbed);
-        emit(b, { type: 'thorns', amount: t, idx: b.enemies.indexOf(e) });
-        if (e.hp <= 0) { e.hp = 0; emit(b, { type: 'enemyDown', idx: b.enemies.indexOf(e), name: e.name }); }
-        checkBattleEnd(b);
-      }
-    }
-  }
-
-  function enemyTurnOne(b, e) {
-    // dots tick at the start of each enemy's move
-    if (e.poison > 0) { e.hp -= e.poison; emit(b, { type: 'dot', kind: 'poison', amount: e.poison, idx: b.enemies.indexOf(e) }); e.poison--; }
-    if (e.hp > 0 && e.burn > 0 && e.burnTurns > 0) {
-      e.hp -= e.burn; emit(b, { type: 'dot', kind: 'burn', amount: e.burn, idx: b.enemies.indexOf(e) });
-      e.burnTurns--; if (e.burnTurns === 0) e.burn = 0;
-    }
-    if (e.hp <= 0) { e.hp = 0; emit(b, { type: 'enemyDown', idx: b.enemies.indexOf(e), name: e.name }); checkBattleEnd(b); return; }
-    if (b.over) return;
-
-    if (e.stun > 0) {
-      e.stun--;
-      emit(b, { type: 'enemyStunned', idx: b.enemies.indexOf(e) });
-    } else {
-      const m = enemyIntent(b, e);
-      e._choiceIdx = null;
-      e.block = 0;
-      emit(b, { type: 'enemyAct', move: m, idx: b.enemies.indexOf(e) });
-      switch (m.kind) {
-        case 'attack': enemyAttack(b, e, m.n, m.hits); break;
-        case 'block': e.block += Math.round(m.n * e.dmgMult); break;
-        case 'buff': e.str += m.str; break;
-        case 'debuff':
-          if (m.weak) b.player.weak += m.weak;
-          if (m.vuln) b.player.vuln += m.vuln;
-          break;
-        case 'leech': {
-          const drain = m.insight + ((b.condition && b.condition.leechBonus) || 0);
-          b.player.insight = Math.max(0, b.player.insight - drain);
-          if (m.n) enemyAttack(b, e, m.n, 1);
-          emit(b, { type: 'leeched', amount: drain });
-          break;
-        }
-        case 'smolder':
-          if (m.n) enemyAttack(b, e, m.n, 1);
-          break;
-        case 'venom':
-          if (m.n) enemyAttack(b, e, m.n, 1);
-          break;
-        case 'heal': e.hp = Math.min(e.maxHp, e.hp + Math.round(m.n * e.dmgMult)); break;
-      }
-      e.patternIdx++;
-    }
-    // durations tick per enemy
-    if (e.weak > 0) e.weak--;
-    if (e.vuln > 0) e.vuln--;
-    if (e.blind > 0) e.blind--;
-  }
-
-  function discardCard(b, inst) {
-    const idx = b.hand.findIndex(c => c.inst === inst);
-    if (idx < 0) return false;
-    const c = b.hand.splice(idx, 1)[0];
-    b.discard.push(c);
-    emit(b, { type: 'discarded', card: cardView(c) });
+  function mulligan(b) {
+    if (b.over || b.mulligans <= 0) return false;
+    b.mulligans--;
+    b.tray = b.tray.filter(t => t.frozen); // frozen tiles stay stuck
+    refillTray(b);
+    say(b, '♻ You sweep the loom and draw fresh letters.');
     return true;
   }
 
-  // Fallback for when the UI/sim hasn't already trimmed the hand: shed the
-  // cheapest, least-honed cards first.
-  function enforceKeepLimit(b) {
-    while (b.hand.length > KEEP_LIMIT) {
-      let worst = b.hand[0];
-      for (const c of b.hand) {
-        const v = c.cost * 2 + (c.sharpen || 0) - (c.fx.exhaust ? 1 : 0);
-        const wv = worst.cost * 2 + (worst.sharpen || 0) - (worst.fx.exhaust ? 1 : 0);
-        if (v < wv) worst = c;
-      }
-      discardCard(b, worst.inst);
+  /* ---------------- foe turn / end turn ---------------- */
+  function foeIntent(b, f) {
+    let move = f.pattern[f.patternIdx % f.pattern.length];
+    return move;
+  }
+
+  function describeIntent(b, f) {
+    const m = foeIntent(b, f);
+    const dmg = (n) => Math.max(1, Math.round(n * f.dmgScale) + f.str - (f.chill ? Math.ceil((Math.round(n * f.dmgScale) + f.str) * 0.35) : 0));
+    switch (m.kind) {
+      case 'attack': return { icon: '⚔️', text: m.hits > 1 ? `${dmg(m.n)}×${m.hits}` : `${dmg(m.n)}`, kind: 'attack' };
+      case 'devour': return { icon: '👅', text: `eats ${m.n} vowel${m.n > 1 ? 's' : ''}${m.dmg ? ` +${dmg(m.dmg)}` : ''}`, kind: 'devour' };
+      case 'freeze': return { icon: '🧊', text: `freezes ${m.n} tiles`, kind: 'freeze' };
+      case 'burnTile': return { icon: '🔥', text: `burns ${m.n} tile${m.n > 1 ? 's' : ''}${m.dmg ? ` +${dmg(m.dmg)}` : ''}`, kind: 'burnTile' };
+      case 'curse': return { icon: '🚫', text: 'inks out a letter', kind: 'curse' };
+      case 'scramble': return { icon: '🌀', text: 'scrambles your loom', kind: 'scramble' };
+      case 'brood': return { icon: '💪', text: `+${m.str} strength`, kind: 'brood' };
+      default: return { icon: '❔', text: '?', kind: '?' };
+    }
+  }
+
+  function foeAttack(b, f, n, hits) {
+    for (let h = 0; h < (hits || 1); h++) {
+      if (b.over) return;
+      if (f.blind > 0 && b.rng() < 0.5) { say(b, `🌫 ${f.name} strikes only shadow.`); continue; }
+      let d = Math.round(n * f.dmgScale) + f.str;
+      if (f.chill > 0) d = Math.max(1, d - Math.ceil(d * 0.35));
+      const absorbed = Math.min(b.player.block, d);
+      b.player.block -= absorbed;
+      const loss = d - absorbed;
+      b.player.hp -= loss;
+      say(b, loss > 0 ? `💥 ${f.name} hits you for <b>${loss}</b>.` : `🛡 Your stone absorbs ${f.name}'s blow.`);
+      checkEnd(b);
     }
   }
 
   function endTurn(b) {
     if (b.over) return;
-    enforceKeepLimit(b);
-    // unspent energy crystallizes into insight
-    const spare = Math.min(b.player.energy, b.insightCap - b.player.insight);
-    if (spare > 0) { gainInsight(b, spare); emit(b, { type: 'energyConverted', amount: spare }); }
-    emit(b, { type: 'turnEnd', turn: b.turn });
-    for (const e of b.enemies) {
+    b.cursedLetter = null;
+    // blooms fire before the foes act
+    b._blooming = true;
+    for (const bl of b.player.blooms) {
+      say(b, `🌱 <b>${bl.word}</b> blooms.`);
+      castWordFx(b, bl.word, 0.5, 'bloom');
+      bl.turns--;
+    }
+    b._blooming = false;
+    b.player.blooms = b.player.blooms.filter(x => x.turns > 0);
+    if (b.over) return;
+
+    for (const f of b.foes) {
       if (b.over) break;
-      if (e.hp <= 0) continue;
-      enemyTurnOne(b, e);
+      if (f.hp <= 0) continue;
+      // dots
+      if (f.poison > 0) { f.hp -= f.poison; say(b, `☠ ${f.name} suffers ${f.poison} venom.`); f.poison--; }
+      if (f.hp > 0 && f.burn > 0 && f.burnTurns > 0) {
+        f.hp -= f.burn; say(b, `🔥 ${f.name} burns for ${f.burn}.`);
+        f.burnTurns--; if (!f.burnTurns) f.burn = 0;
+      }
+      if (f.hp <= 0) { f.hp = 0; say(b, `✝ ${f.name} is unwritten.`); checkEnd(b); continue; }
+      if (f.regen && f.hp < f.maxHp) f.hp = Math.min(f.maxHp, f.hp + f.regen);
+      if (f.stun > 0) { f.stun--; say(b, `💫 ${f.name} is stunned — it does nothing.`); }
+      else {
+        const m = foeIntent(b, f);
+        switch (m.kind) {
+          case 'attack': foeAttack(b, f, m.n, m.hits); break;
+          case 'devour': {
+            let eaten = 0;
+            for (let i = 0; i < m.n; i++) {
+              const idx = b.tray.findIndex(t => VOWELS.includes(t.ch));
+              if (idx >= 0) { b.tray.splice(idx, 1); eaten++; }
+            }
+            if (eaten) say(b, `👅 ${f.name} devours ${eaten} vowel${eaten > 1 ? 's' : ''} from your loom!`);
+            if (m.dmg) foeAttack(b, f, m.dmg, 1);
+            b._trayDebt = (b._trayDebt || 0) + eaten; // devoured tiles refill a turn late
+            break;
+          }
+          case 'freeze': {
+            const free = b.tray.filter(t => !t.frozen);
+            for (let i = 0; i < m.n && free.length; i++) {
+              const t = free.splice(Math.floor(b.rng() * free.length), 1)[0];
+              t.frozen = 2; // thaws at the START of your next-next turn
+            }
+            say(b, `🧊 ${f.name} rimes ${m.n} of your tiles.`);
+            break;
+          }
+          case 'burnTile': {
+            let burned = 0;
+            for (let i = 0; i < m.n; i++) {
+              const free = b.tray.filter(t => !t.frozen);
+              if (!free.length) break;
+              b.tray.splice(b.tray.indexOf(pick(b.rng, free)), 1);
+              burned++;
+            }
+            if (burned) say(b, `🔥 ${f.name} burns ${burned} tile${burned > 1 ? 's' : ''} to ash.`);
+            if (m.dmg) foeAttack(b, f, m.dmg, 1);
+            break;
+          }
+          case 'curse': {
+            const common = 'AEIOURSNT';
+            b.cursedLetter = common[Math.floor(b.rng() * common.length)];
+            say(b, `🚫 ${f.name} inks out <b>${b.cursedLetter}</b> — you cannot guess with it next turn.`);
+            break;
+          }
+          case 'scramble':
+            b.tray = b.tray.filter(t => t.frozen);
+            refillTray(b);
+            say(b, `🌀 ${f.name} scrambles your whole loom!`);
+            break;
+          case 'brood': f.str += m.str; say(b, `💪 ${f.name} swells with malice (+${m.str}).`); break;
+        }
+        f.patternIdx++;
+      }
+      if (f.blind > 0) f.blind--;
+      if (f.chill > 0) f.chill--;
     }
     if (b.over) return;
-    if (b.player.weak > 0) b.player.weak--;
-    if (b.player.vuln > 0) b.player.vuln--;
-    startPlayerTurn(b);
+    // your next turn begins
+    b.turn++;
+    b.player.block = 0;
+    b.guessedThisTurn = false;
+    for (const t of b.tray) if (t.frozen) t.frozen--;
+    const debt = b._trayDebt || 0;
+    b._trayDebt = 0;
+    const hold = b.traySize;
+    b.traySize -= debt;         // devoured letters stay missing one turn
+    refillTray(b);
+    b.traySize = hold;
   }
 
-  /* ============================================================
-   * RUN LAYER — map generation, encounters, rewards, forge
-   * ============================================================ */
-  const NODE_TYPES = { BATTLE: 'battle', ELITE: 'elite', TREASURE: 'treasure', SHRINE: 'shrine', EVENT: 'event', BOSS: 'boss' };
-
-  function encounterFor(rng, tier, type, wdata) {
-    // Returns [{id, scale}] — multi-enemy packs appear from tier 2 on.
-    if (type === NODE_TYPES.BOSS) return [{ id: wdata.boss, scale: 1 }];
-    if (type === NODE_TYPES.ELITE) return [{ id: pick(rng, wdata.elites), scale: 1 }];
-    const r = rng();
-    if (tier >= 4 && r < 0.18) {
-      return [0, 1, 2].map(() => ({ id: pick(rng, wdata.normals), scale: 0.52 }));
+  function checkEnd(b) {
+    if (b.over) return;
+    if (!alive(b).length) {
+      b.over = true; b.won = true;
+      b.run.hp = b.player.hp; b.run.maxHp = b.player.maxHp;
+      say(b, '🏆 The page is yours.');
+    } else if (b.player.hp <= 0) {
+      b.player.hp = 0; b.over = true; b.won = false;
+      b.run.hp = 0;
+      say(b, '🕯 Your ink runs dry...');
     }
-    if (tier >= 2 && r < 0.42) {
-      return [0, 1].map(() => ({ id: pick(rng, wdata.normals), scale: 0.68 }));
-    }
-    return [{ id: pick(rng, wdata.normals), scale: 1 }];
   }
 
-  function generateWorldMap(rng, tier, worldId) {
-    const columns = [];
-    const world = EnemyData.WORLD_BY_ID[worldId || 'woods'] || EnemyData.WORLDS[0];
-    const wdata = EnemyData.BY_WORLD[world.id];
-    const risky = !!world.risky;
-    const stages = world.secret ? 3 : 6; // THE UNWRITTEN is short and lethal
-    const eliteChance = risky ? 0.26 : 0.16;
-    for (let stage = 1; stage <= stages; stage++) {
-      if (stage === stages) {
-        columns.push([{ stage, idx: 0, type: NODE_TYPES.BOSS, enemies: encounterFor(rng, tier, NODE_TYPES.BOSS, wdata), next: [] }]);
-        continue;
-      }
-      const count = stage === 1 ? 2 : 2 + Math.floor(rng() * 2);
-      const col = [];
-      for (let i = 0; i < count; i++) {
-        let type = NODE_TYPES.BATTLE;
-        if (stage > 1) {
-          const r = rng();
-          if (r < eliteChance) type = NODE_TYPES.ELITE;
-          else if (r < eliteChance + 0.14) type = NODE_TYPES.TREASURE;
-          else if (r < eliteChance + 0.26) type = NODE_TYPES.SHRINE;
-          else if (r < eliteChance + 0.38) type = NODE_TYPES.EVENT;
-        }
-        const node = { stage, idx: i, type, next: [] };
-        if (type === NODE_TYPES.BATTLE || type === NODE_TYPES.ELITE) {
-          node.enemies = encounterFor(rng, tier, type, wdata);
-        }
-        col.push(node);
-      }
-      if (!col.some(n => n.type === NODE_TYPES.BATTLE || n.type === NODE_TYPES.ELITE)) {
-        const n = pick(rng, col);
-        n.type = NODE_TYPES.BATTLE; n.enemies = encounterFor(rng, tier, NODE_TYPES.BATTLE, wdata);
-      }
-      columns.push(col);
-    }
-    for (let s = 0; s < columns.length - 1; s++) {
-      const cur = columns[s], nxt = columns[s + 1];
-      const covered = new Set();
-      cur.forEach((node, i) => {
-        const lo = Math.max(0, Math.min(i, nxt.length - 1) - (rng() < 0.5 ? 1 : 0));
-        const hi = Math.min(nxt.length - 1, Math.max(i, 0) + (rng() < 0.5 ? 1 : 0));
-        for (let j = lo; j <= hi; j++) { node.next.push(j); covered.add(j); }
-        if (!node.next.length) { const j = Math.min(i, nxt.length - 1); node.next.push(j); covered.add(j); }
-      });
-      nxt.forEach((_, j) => {
-        if (!covered.has(j)) {
-          let bi = 0, bd = 1e9;
-          cur.forEach((node, i) => { const d = Math.abs(i - j); if (d < bd) { bd = d; bi = i; } });
-          cur[bi].next.push(j);
-        }
-      });
-      cur.forEach(n => { n.next = Array.from(new Set(n.next)).sort((a, z) => a - z); });
-    }
-    return { world: tier, worldId: world.id, risky, columns };
+  /* ---------------- the run ---------------- */
+  // Node types: battle ×4 (ramping), camp, elite, boss — a 15-minute spiral.
+  function newRun(seed, meta) {
+    const rng = makeRng(seed);
+    const bag = Object.assign({}, Morph.LETTER_WEIGHTS);
+    const run = {
+      rng, meta, seed,
+      hp: PLAYER_HP, maxHp: PLAYER_HP,
+      traySize: TRAY_BASE,
+      bag,
+      nodeIdx: 0,
+      nodes: buildNodes(rng),
+      over: false, victory: false,
+      startNotes: meta.parts.size,
+    };
+    return run;
   }
 
-  // Aetheria (red) cards are only rollable from World 3 on Adept+ difficulty.
-  function aetheriaEligible(world, difficulty) {
-    return world >= 3 && difficulty && difficulty.id >= 1;
+  function buildNodes(rng) {
+    return [
+      { type: 'battle', tier: 0 },
+      { type: 'battle', tier: 1 },
+      { type: 'camp' },
+      { type: 'battle', tier: 2 },
+      { type: 'battle', tier: 3 },
+      { type: 'elite', tier: 4 },
+      { type: 'camp' },
+      { type: 'boss', tier: 5 },
+    ];
   }
 
-  function rollCardRewards(rng, meta, bonus, opts) {
-    const pool = CardData.rewardPool(meta);
+  function battleForNode(run, node) {
+    const scale = Foes.SCALE(node.tier);
+    let ids;
+    if (node.type === 'boss') ids = ['illiterate'];
+    else if (node.type === 'elite') ids = ['grammarian', { id: pick(run.rng, ['vowelleech', 'pyreimp']), mult: 0.7 }];
+    else ids = [pick(run.rng, Foes.ENCOUNTERS[Math.min(node.tier, 3)])];
+    return createBattle(run, ids, scale);
+  }
+
+  /* Rewards after each won battle: pick one of three offers. */
+  function rollRewards(run) {
+    const offers = [];
+    // 1) study a word: its parts become grimoire notes, no deduction needed
+    const lens = servableLens(run);
+    const pool = unknownWords(run, lens.concat(lens[lens.length - 1] + 1 <= 10 ? [lens[lens.length - 1] + 1] : []))
+      .filter(e => e.parts.some(pid => !run.meta.parts.has(pid)));
+    if (pool.length) {
+      const w = pick(run.rng, pool);
+      const fresh = w.parts.filter(pid => !run.meta.parts.has(pid));
+      offers.push({ kind: 'study', word: w.word,
+        title: `Study ${w.word}`,
+        desc: `${w.name} — ${w.desc}. Inscribes its missing notes: ${fresh.map(pid => Morph.PARTS[pid].title.split(' — ')[0]).join(', ')}.` });
+    }
+    offers.push({ kind: 'mend', title: 'Mend', desc: 'Recover 14 ink (hp).' });
+    if (run.traySize < 16) offers.push({ kind: 'loom', title: 'Widen the Loom', desc: '+1 tile in your tray, this run.' });
+    const el = pick(run.rng, Morph.ELEMENTS);
+    offers.push({ kind: 'infuse', el: el.id, title: `Infuse ${el.name}`, desc: `Season your letter bag toward ${el.root}-words (${el.icon}).` });
+    // pick 3 distinct
     const out = [];
-    const seen = new Set();
-    // W3+ bosses on higher difficulties always offer one aetheria card
-    if (opts && opts.aetheria && opts.guaranteeAetheria) {
-      const reds = pool.filter(c => c.rarity === 'aetheria');
-      if (reds.length) {
-        const c = pick(rng, reds);
-        seen.add(c.id);
-        out.push(c);
-      }
-    }
-    let guard = 0;
-    while (out.length < 3 && guard++ < 60) {
-      const rarity = CardData.rollRarity(rng, bonus, opts);
-      const options = pool.filter(c => c.rarity === rarity && !seen.has(c.id));
-      if (!options.length) continue;
-      const c = pick(rng, options);
-      seen.add(c.id);
-      out.push(c);
-    }
+    while (out.length < 3 && offers.length) out.push(offers.splice(Math.floor(run.rng() * offers.length), 1)[0]);
     return out;
   }
 
-  const FORGE = {
-    upgradeCost: (upgradesBought) => 45 + 20 * upgradesBought,
-    removeCost: (removals) => 55 + 30 * removals,
-  };
+  function applyReward(run, offer) {
+    switch (offer.kind) {
+      case 'study': {
+        const entry = Morph.WORDS[offer.word];
+        const fresh = inscribeParts(run.meta, entry);
+        run.meta.solved.add(offer.word);
+        return fresh.length ? `${fresh.length} note${fresh.length > 1 ? 's' : ''} inscribed from ${offer.word}.` : `${offer.word} studied.`;
+      }
+      case 'mend': run.hp = Math.min(run.maxHp, run.hp + 14); return 'You mend 14.';
+      case 'loom': run.traySize++; return 'Your loom widens.';
+      case 'infuse': {
+        const el = Morph.EL_BY_ID[offer.el];
+        for (const ch of el.root + el.medium + el.large) run.bag[ch] = (run.bag[ch] || 0) + 14;
+        return `The bag hums with ${el.name}.`;
+      }
+    }
+  }
 
-  /* Run-level rules shared by game and simulator */
-  const RUN_RULES = {
-    postBattleHealMissingPct: 0.18,
-    bossHealMissingPct: 1.0,
-    treasureGold: [22, 40],
-    treasureCardChance: 0.35,
-    shrineHealPct: 0.30,
-    shrineGold: 25,
-    eliteRelicChance: 1.0,   // elites always drop a relic
-    bossRelicChoice: 0,      // bosses give gold/cards/full heal instead — relics come from elites & events
-  };
+  function campChoices(run) {
+    return [
+      { kind: 'rest', title: 'Rest', desc: 'Recover 40% of your missing ink.' },
+      { kind: 'reflect', title: 'Reflect', desc: 'Puzzle over the margins: one missing note of the grammar reveals itself.' },
+    ];
+  }
+  function applyCamp(run, choice) {
+    if (choice.kind === 'rest') {
+      const heal = Math.round((run.maxHp - run.hp) * 0.4);
+      run.hp += heal;
+      return `You rest. +${heal} ink.`;
+    }
+    const missing = Morph.PART_IDS.filter(pid => !run.meta.parts.has(pid));
+    if (!missing.length) { run.hp = Math.min(run.maxHp, run.hp + 8); return 'The grammar is complete — you doze instead (+8).'; }
+    const pid = pick(run.rng, missing);
+    run.meta.parts.add(pid);
+    return `In the quiet it comes to you: ${Morph.PARTS[pid].title} — noted.`;
+  }
 
   return {
-    makeRng, pick, shuffle,
-    HAND_CAP, KEEP_LIMIT, BASE_ENERGY, INSIGHT_CAP, FIRST_GUESS_MULT, POWER_MULT, ATTUNE_TIERS,
-    makeCard, cardView, createBattle, startPlayerTurn, endTurn,
-    playCard, canAfford, effectiveCost, discardCard, guess, canGuess, changeWordLength, serveWord,
-    elemRelation, elemScale,
-    scry, canScry, setTarget, targetEnemy, alive,
-    enemyIntent, describeIntent, drainEvents, castSpell,
-    exportWord, consistentLearned, speakForbidden,
-    NODE_TYPES, generateWorldMap, encounterFor, rollCardRewards, aetheriaEligible, FORGE, RUN_RULES,
-    allLearned,
+    makeRng, pick,
+    TRAY_BASE, PLAYER_HP, SOLVE_MULT, IMPROV_MULT,
+    createBattle, newRun, buildNodes, battleForNode,
+    guess, canGuess, judge, serveMystery, revealLetter,
+    castWord, canSpell, tilesFor, spellableWords, mulligan, endTurn,
+    targetFoe, alive, describeIntent, foeIntent,
+    rollRewards, applyReward, campChoices, applyCamp,
+    refillTray, drawTile, servableLens, unknownWords, inscribeParts,
   };
 });

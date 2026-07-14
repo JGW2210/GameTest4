@@ -1,57 +1,43 @@
-/* ============================================================
- * LEXICON ARCANUM — persistence (localStorage)
- * Meta progress (grimoire, unlocks, wins) survives every run.
- * ============================================================ */
+/* WORDLOOM — persistence. The grimoire survives every death. */
 (function () {
-  const META_KEY = 'lexicon-arcanum-meta-v1';
-  const RUN_KEY = 'lexicon-arcanum-run-v2';
+  const KEY = 'wordloom-meta-v1';
 
-  function defaultMeta() {
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return fresh();
+      const d = JSON.parse(raw);
+      return {
+        parts: new Set(d.parts || []),
+        solved: new Set(d.solved || []),
+        runs: d.runs || 0,
+        wins: d.wins || 0,
+        bestNode: d.bestNode || 0,
+      };
+    } catch (e) { return fresh(); }
+  }
+
+  // Every grimoire begins with the first stitches: the notes that read
+  // IGNA (a spark) and SANA (a salve).
+  function fresh() {
     return {
-      learnedWords: [],
-      discoveredPower: [],
-      totalWins: 0,
-      winsByDifficulty: {},   // diffId -> count
-      bestDifficultyWin: -1,
-      classWins: {},          // classId -> count
-      firstGuessCasts: 0,
-      bestWorld: 1,
-      runsPlayed: 0,
-      spellsCast: 0,
-      bestStreak: 0,
-      guessDist: {},          // len -> {guessCount: solves}
-      deepestSpiral: 0,
-      trueEnding: false,
-      forbiddenMastered: [],
-      // whispered-secret overrides
-      unlockAllClasses: false,
-      unlockAllDifficulties: false,
-      unlockArchivist: false,
+      parts: new Set(['root:ign', 'suf:ign:small', 'root:san', 'suf:san:small', 'form:4']),
+      solved: new Set(['IGNA', 'SANA']),
+      runs: 0, wins: 0, bestNode: 0,
     };
   }
 
-  function loadMeta() {
+  function save(meta) {
     try {
-      const raw = localStorage.getItem(META_KEY);
-      if (!raw) return defaultMeta();
-      return Object.assign(defaultMeta(), JSON.parse(raw));
-    } catch (e) { return defaultMeta(); }
+      localStorage.setItem(KEY, JSON.stringify({
+        parts: Array.from(meta.parts),
+        solved: Array.from(meta.solved),
+        runs: meta.runs, wins: meta.wins, bestNode: meta.bestNode,
+      }));
+    } catch (e) { /* private mode */ }
   }
 
-  function saveMeta(meta) {
-    try { localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch (e) { /* storage full/blocked */ }
-  }
+  function wipe() { try { localStorage.removeItem(KEY); } catch (e) {} }
 
-  function saveRun(run) {
-    try { localStorage.setItem(RUN_KEY, JSON.stringify(run)); } catch (e) {}
-  }
-  function loadRun() {
-    try {
-      const raw = localStorage.getItem(RUN_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
-  }
-  function clearRun() { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
-
-  window.SaveSystem = { loadMeta, saveMeta, saveRun, loadRun, clearRun };
+  window.LoomSave = { load, save, wipe, fresh };
 })();

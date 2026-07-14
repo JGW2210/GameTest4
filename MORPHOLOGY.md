@@ -131,7 +131,7 @@ centers. 10 elements × 27 = **270 words**.)
 
 ## 8. Validation
 
-`node wordloom/tools/genwords.js` regenerates the lexicon and asserts: exact
+`node tools/genwords.js` regenerates the lexicon and asserts: exact
 canonical forms, 270 unique words, correct lengths, no twin vowels survive
 elision, no triple letters, no 4-consonant pileups. `--dump` prints every word
 with its meaning.
