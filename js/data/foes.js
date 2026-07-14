@@ -110,8 +110,11 @@
       elite: 'boundindex', boss: 'illiterate' },
   ];
 
-  // difficulty scale by global stage index (0..11 across three worlds)
-  const SCALE = (idx) => 1 + idx * 0.09;
+  // difficulty scale by global stage index (0..11 across three worlds).
+  // Progressive for the speaking-teaches economy: world 1 stays a fair
+  // teacher, but from the Inkfen on the curve steepens — notes arrive
+  // faster now, so the later worlds press harder to keep pace.
+  const SCALE = (idx) => 1 + idx * 0.09 + Math.max(0, idx - 7) * 0.06;
 
   return { FOES, WORLDS, SCALE };
 });

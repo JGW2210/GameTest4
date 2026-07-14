@@ -32,6 +32,10 @@ check('Steam union IGNIETUNDUS', !!M.WORDS['IGNIETUNDUS'] && M.WORDS['IGNIETUNDU
 check('unions are 11, grand unions 12',
   M.VISIBLE.filter(e => e.form === 'union').every(e => e.len === 11) &&
   M.VISIBLE.filter(e => e.form === 'grandunion').every(e => e.len === 12));
+check('woven unions span 11-13',
+  M.VISIBLE.filter(e => e.form === 'weaveunion').length === 900 &&
+  M.VISIBLE.filter(e => e.form === 'weaveunion').every(e => e.len >= 11 && e.len <= 13),
+  String(M.VISIBLE.filter(e => e.form === 'weaveunion').length));
 check('90 visible unions', M.VISIBLE.filter(e => e.form === 'union').length === 90,
   String(M.VISIBLE.filter(e => e.form === 'union').length));
 check('10 signature pairs resolve both ways', Object.keys(M.SIGNATURES).length === 10 &&
@@ -49,11 +53,17 @@ for (const el of M.ELEMENTS) {
     (elder.fx.dmg || elder.fx.heal || 99) > (base.fx.dmg || base.fx.heal || 0));
   check(`elder parts use sroot:${el.id}`, elder.parts.includes('sroot:' + el.id) && !elder.parts.includes('root:' + el.id));
 }
-check('17 secret ids catalogued', M.SECRET_IDS.length === 17 && M.SECRET_IDS.every(id => M.SECRET_INFO[id]),
+check('18 secret ids catalogued', M.SECRET_IDS.length === 18 && M.SECRET_IDS.every(id => M.SECRET_INFO[id]),
   String(M.SECRET_IDS.length));
 check('no secret ids leak into public notes', M.SECRET_IDS.every(id => !M.PARTS[id]));
 
 /* 3b. Every KIND of word part has a secret counterpart, and each one weaves. */
+check('secret rule: the Undivided Vowel', M.SECRET_IDS.includes('srule:twin'));
+const twins = M.LIST.filter(e => e.parts.includes('srule:twin'));
+check('every elided visible word has an undivided twin',
+  twins.length === M.VISIBLE.filter(e => e.elided).length && twins.every(e => e.hidden),
+  twins.length + ' vs ' + M.VISIBLE.filter(e => e.elided).length);
+check('twins keep twin vowels standing', twins.every(e => /AA|EE|II|OO|UU/.test(e.word)));
 check('secret centers exist', M.SECRET_CENTERS.length === 3 &&
   M.SECRET_CENTERS.every(c => M.SECRET_IDS.includes('scenter:' + c.id)));
 check('secret center sizes span short/std/grand',
@@ -69,8 +79,9 @@ for (const el of M.ELEMENTS) {
   }
   const self = M.LIST.find(e => e.el === el.id && e.form === 'selfsame' && !e.secretSpelling);
   check(`selfsame of ${el.root}`, !!self && self.hidden && self.parts.includes('sform:selfsame'));
-  const ac = M.LIST.filter(e => e.el === el.id && e.joiner === 'ac');
-  check(`AC unions of ${el.root}`, ac.length === 22 && ac.every(e => e.hidden && e.parts.includes('sjoin:ac')),
+  const ac = M.LIST.filter(e => e.el === el.id && e.joiner === 'ac' && !e.parts.includes('srule:twin'));
+  // 11 partners × (union + grand union + 13 woven-union centers) = 165
+  check(`AC blends of ${el.root}`, ac.length === 165 && ac.every(e => e.hidden && e.parts.includes('sjoin:ac')),
     String(ac.length));
 }
 
@@ -79,7 +90,7 @@ const seen = new Set();
 for (const e of M.LIST) {
   check(`unique ${e.word}`, !seen.has(e.word)); seen.add(e.word);
   check(`length honest ${e.word}`, e.word.length === e.len);
-  check(`no twin vowels ${e.word}`, !/AA|EE|II|OO|UU/.test(e.word));
+  if (!e.parts.includes('srule:twin')) check(`no twin vowels ${e.word}`, !/AA|EE|II|OO|UU/.test(e.word));
   check(`no triples ${e.word}`, !/(.)\1\1/.test(e.word));
   check(`pronounceable ${e.word}`, !/[^AEIOU]{4}/.test(e.word), 'consonant pileup');
   check(`has fx ${e.word}`, e.fx && Object.keys(e.fx).length > 0);
@@ -90,7 +101,7 @@ for (const e of M.LIST) {
 }
 
 /* 5. The notes economy: 84 public notes read every visible word. */
-check('84 public notes', M.PART_IDS.length === 84, String(M.PART_IDS.length));
+check('85 public notes', M.PART_IDS.length === 85, String(M.PART_IDS.length));
 check('all rules live in the rules group', ['rule:elision', 'rule:easing', 'rule:length', 'rule:sizes']
   .every(pid => M.PARTS[pid] && M.PARTS[pid].group === 'rules'));
 const allPublic = new Set(M.PART_IDS);
@@ -117,16 +128,21 @@ for (const el of M.ELEMENTS) {
       check(`${el.root}×${c.seq}×${form}`, M.VISIBLE.some(e => e.el === el.id && e.center === c.id && e.form === form));
     }
   }
-  // every element weds every other, both ways, at both blend lengths
+  // every element weds every other, both ways, at both blend lengths —
+  // and every public center weaves into every pairing
   for (const el2 of M.ELEMENTS) {
     if (el2.id === el.id) continue;
     for (const form of ['union', 'grandunion']) {
       check(`${el.root}+${el2.root} ${form}`, M.VISIBLE.some(e => e.el === el.id && e.el2 === el2.id && e.form === form && e.joiner === 'et'));
     }
+    for (const c of M.CENTERS) {
+      check(`${el.root}+${el2.root} woven ${c.seq}`, M.VISIBLE.some(e =>
+        e.el === el.id && e.el2 === el2.id && e.form === 'weaveunion' && e.center === c.id && e.joiner === 'et'));
+    }
   }
 }
-// every length from 4 to 12 runes is guessable somewhere in the visible lexicon
-for (let len = 4; len <= 12; len++) {
+// every length from 4 to 13 runes is guessable somewhere in the visible lexicon
+for (let len = 4; len <= 13; len++) {
   check(`length ${len} exists`, M.VISIBLE.some(e => e.len === len));
 }
 

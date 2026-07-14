@@ -20,19 +20,21 @@ cards entirely — **words are both the puzzle and the arsenal**:
   notes) from your **loom of letter tiles**. Tiles are the only cost. Longer
   words need more, rarer letters; that IS the mana curve.
 
-You never collect words. You collect the grammar: **84 notes read all 610
+You never collect words. You collect the grammar: **85 notes read all 1,510
 visible words** — learn `GEL`, `-AS`, and the A-binder from one lucky solve
 and you can suddenly read a dozen frost words you have never seen. And
 solving is not the only teacher: **speaking any true word of the tongue** —
 improvising it from your tiles, or offering it as a mystery guess, right or
-wrong — inscribes its unknown parts too. Every rule of the language,
-including the laws of length, is logged under the grimoire's **rules** area.
+wrong — inscribes its unknown parts too (though never a deep form note — those keep
+their monopoly). Every rule of the language, including the laws of length,
+is logged under the grimoire's **rules** area.
 
 There is no word list. The lexicon is **generated from a grammar** — 10
-element roots × 3 suffix sizes × 10 centers (short/standard/grand) × 9
+element roots × 3 suffix sizes × 10 centers (short/standard/grand) × 10
 forms, including **blended words**: the joiner `ET` weds two elements
 (`IGNIETUNDUS` — fire *and* water — is Steam), with the second element in
-its late spelling (`UND`, `NOC`, `LUX`...). Two euphony rules keep it all
+its late spelling (`UND`, `NOC`, `LUX`...) — and centers weave into blends
+too, up to the 13-rune grand **Woven Unions** (`IGNIETUNDONDA`). Two euphony rules keep it all
 pronounceable. Deduction is therefore *linguistic*: recognizing `IGNI-` on
 the first guess collapses the search space. And the road-books say the
 grammar keeps older secrets — spellings and elements that appear in no note,
@@ -64,9 +66,11 @@ You **choose the mystery word's length**. Lengths beyond the basic forms
 unlock through their form notes — and the deep forms (Mirror, Verse,
 Sovereign, the Unions) never drop from ordinary study; only elites, wardens,
 and the elder roads hold them. The elder roads themselves are **rare**
-(roughly one world in five), and there are now **17 secrets** to find: elder
-spellings, the two unspoken elements, three secret centers, a secret joiner,
-and a secret form — an apocryphal counterpart for every kind of word part.
+(roughly one world in five, with mercy after three dry runs), and there are
+now **18 secrets** to find: elder spellings, the two unspoken elements,
+three secret centers, a secret joiner, a secret form, and a secret rule —
+an apocryphal counterpart for every kind of word part. Once the first is
+held, the grimoire's Apocrypha page admits how many of each kind remain.
 
 18 foes attack the *word game*, not just your ink: vowel leeches and tile
 thieves, rime wraiths, wisps that blur your wordle marks, lexicons that sap
@@ -78,21 +82,23 @@ Second Thoughts (an extra guess, once per battle), Whetstone (better
 improvisation), Ink Vial — and deep form notes from elites and wardens.
 
 Death loses nothing that matters: **every note makes the next run
-stronger** — and pushes the mystery words longer, up to the 12-rune Grand
-Unions.
+stronger** — and pushes the mystery words longer, up to the 13-rune grand
+Woven Unions.
 
 ## Balance snapshot
 
 `node tools/simulate.js 300` — scripted player on the shipped engine.
-(Speaking-teaches makes early runs far more generous with notes; the hidden
-grammar, now 17 secrets behind rarer elder doors, is the long game.)
+(Speaking-teaches makes every run generous with notes — ~38 banked per fresh
+death — while per-run win rates keep the old shape; the hidden grammar, 18
+secrets behind rare elder doors, is the long game. World 3 presses harder
+now to meet the richer grimoire.)
 
 | grimoire | win rate | note |
 |---|---:|---|
-| fresh (5 starter notes) | ~20–25% | banks ~46 notes and ~0.4 secrets per run |
-| +16 notes | ~33% | |
-| +30 notes, Scrivener | ~30% | the Cantor reaches ~56% here |
-| full 84-note grammar | ~62% | ~76% with every secret, as the Cantor |
+| fresh (5 starter notes) | ~5–7% | banks ~38 notes and ~0.35 secrets per run |
+| +16 notes | ~9% | |
+| +30 notes, Scrivener | ~12% | the Cantor reaches ~27% here |
+| full 85-note grammar | ~52% | ~73% with every secret, as the Cantor |
 
 ## Layout
 

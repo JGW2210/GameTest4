@@ -31,6 +31,7 @@
         parts: new Set(d.parts || []),
         secrets: new Set(d.secrets || []),
         solved: new Set(d.solved || []),
+        elderDrought: d.elderDrought || 0,
         runs: d.runs || 0,
         wins: d.wins || 0,
         bestNode: d.bestNode || 0,
@@ -45,6 +46,7 @@
       parts: new Set(['root:ign', 'suf:ign:small', 'root:san', 'suf:san:small', 'form:cantrip']),
       secrets: new Set(),
       solved: new Set(['IGNA', 'SANA']),
+      elderDrought: 0,
       runs: 0, wins: 0, bestNode: 0,
     };
   }
@@ -55,6 +57,7 @@
         parts: Array.from(meta.parts),
         secrets: Array.from(meta.secrets),
         solved: Array.from(meta.solved),
+        elderDrought: meta.elderDrought || 0,
         runs: meta.runs, wins: meta.wins, bestNode: meta.bestNode,
       }));
     } catch (e) { /* private mode */ }

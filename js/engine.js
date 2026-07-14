@@ -36,7 +36,7 @@
   const VOWELS = 'AEIOU';
   // the deep form notes never drop from ordinary study — elites, bosses and
   // the elder roads hold them
-  const DEEP_FORMS = ['form:mirror', 'form:verse', 'form:sovereign', 'form:union', 'form:grandunion'];
+  const DEEP_FORMS = ['form:mirror', 'form:verse', 'form:sovereign', 'form:union', 'form:grandunion', 'form:weaveunion'];
   const FREE_FORMS = ['cantrip', 'word', 'bound']; // guessable without their note
 
   /* ---------------- knowledge ---------------- */
@@ -132,10 +132,11 @@
       && (FREE_FORMS.includes(e.form) || formsAllowed.has('form:' + e.form)));
   }
   // every length the player may currently REQUEST
+  const MAX_LEN = 13; // the grand Woven Unions reach 13 runes
   function guessableLengths(run) {
     const formsAllowed = knowSet(run.meta);
     const out = [];
-    for (let len = 4; len <= 12; len++) {
+    for (let len = 4; len <= MAX_LEN; len++) {
       if (unsolvedAt(run.meta, len, formsAllowed).length) out.push(len);
     }
     return out.length ? out : [4];
@@ -189,6 +190,17 @@
     return fresh;
   }
 
+  // Speaking teaches — but never the deep form notes. Those come only
+  // from solving, elites, wardens, and the elder roads.
+  function inscribeSpokenParts(meta, entry) {
+    const fresh = [];
+    for (const pid of entry.parts) {
+      if (DEEP_FORMS.includes(pid)) continue;
+      if (Morph.PARTS[pid] && !meta.parts.has(pid)) { meta.parts.add(pid); fresh.push(pid); }
+    }
+    return fresh;
+  }
+
   function guess(b, raw) {
     if (!canGuess(b)) return { ok: false, reason: 'spent' };
     const g = String(raw || '').toUpperCase().replace(/[^A-Z]/g, '');
@@ -219,7 +231,7 @@
     const spoken = Morph.WORDS[g];
     let fresh = [];
     if (spoken) {
-      fresh = inscribeParts(b.run.meta, spoken);
+      fresh = inscribeSpokenParts(b.run.meta, spoken);
       if (fresh.length) {
         b.stats.notes.push(...fresh);
         say(b, `✒️ <b>${g}</b> was not the mystery — but it IS a word, and its grammar inscribes itself: <b>${fresh.map(pid => Morph.PARTS[pid].title).join(' · ')}</b>.`);
@@ -254,7 +266,7 @@
   const canSpell = (b, word) => !!tilesFor(b, word);
 
   function chipMax(run) {
-    return Math.min(12, run.cls.chipMax + (run.perks.ribbon || 0));
+    return Math.min(MAX_LEN, run.cls.chipMax + (run.perks.ribbon || 0));
   }
 
   /* the loom-sense: how long is the longest word the loom could weave
@@ -263,7 +275,7 @@
    * is true when something longer than the reach stirs in the tiles.
    * Readable or improvised alike; secret words never register. */
   function loomSense(b) {
-    const cap = Math.min(12, chipMax(b.run));
+    const cap = Math.min(MAX_LEN, chipMax(b.run));
     let best = 0, beyond = false;
     for (const e of VISIBLE_BY_LEN) {
       if (e.len <= cap) {
@@ -331,7 +343,7 @@
       say(b, `〰 You improvise <b>${word}</b> — its grammar escapes you (×${improv}).`);
       // spelling a word you cannot yet read still teaches its grammar:
       // the unknown parts inscribe themselves (the cast stays improvised)
-      const fresh = inscribeParts(b.run.meta, entry);
+      const fresh = inscribeSpokenParts(b.run.meta, entry);
       if (fresh.length) {
         b.stats.notes.push(...fresh);
         say(b, `✒️ The speaking teaches: <b>${fresh.map(pid => Morph.PARTS[pid].title).join(' · ')}</b> — yours forever.`);
@@ -694,6 +706,7 @@
 
   /* ---------------- the run: 3 worlds × 4 stages, branching ---------------- */
   function newRun(seed, meta, clsId) {
+    meta.elderDrought = (meta.elderDrought || 0) + 1;
     const rng = makeRng(seed);
     const cls = Weavers.BY_ID[clsId] || Weavers.CLASSES[0];
     const bag = {};
@@ -718,13 +731,19 @@
   // Elder pages are RARE: the hidden grammar should take many runs to
   // gather, so an elder door graces roughly one world in five.
   const ELDER_CHANCE = 0.2;
+  // pity: after this many runs without committing an elder page to
+  // memory, the next run's first eligible world is guaranteed one
+  const ELDER_PITY = 3;
   function buildWorlds(rng, meta) {
+    let pitySpent = false;
     return Foes.WORLDS.map((w, wi) => {
       const untaught = LoomEvents.SECRET_EVENTS.filter(ev =>
         !meta.secrets.has(ev.teaches) && (!ev.deep || wi === 2));
       const stages = [];
       stages.push([{ type: 'battle' }]);
-      const eventNode = (untaught.length && rng() < ELDER_CHANCE)
+      const pity = !pitySpent && untaught.length && (meta.elderDrought || 0) >= ELDER_PITY;
+      if (pity) pitySpent = true;
+      const eventNode = (untaught.length && (pity || rng() < ELDER_CHANCE))
         ? { type: 'elder', event: pick(rng, untaught) }
         : { type: 'event' };
       stages.push(shufflePair(rng, [{ type: 'battle' }, eventNode]));
@@ -787,7 +806,7 @@
     if (run.traySize < 16) offers.push({ kind: 'loom', title: 'Widen the Loom', desc: '+1 tile in your tray, this run.' });
     const el = pick(run.rng, Morph.ELEMENTS);
     offers.push({ kind: 'infuse', el: el.id, title: `Infuse ${el.name}`, desc: `Season your letter bag toward ${el.root}-words (${el.icon}).` });
-    if ((run.perks.ribbon || 0) < 4 && chipMax(run) < 12)
+    if ((run.perks.ribbon || 0) < 4 && chipMax(run) < MAX_LEN)
       offers.push({ kind: 'ribbon', title: 'Ribbon Index', desc: `Your loom-sense reaches one rune further (now feels words to ${chipMax(run) + 1} runes).` });
     if (!run.perks.quill) offers.push({ kind: 'quill', title: 'Quill of Second Thoughts', desc: 'Once per battle: a second guess in one turn.' });
     if (!run.perks.whetstone) offers.push({ kind: 'whetstone', title: 'Whetstone', desc: 'Improvised words carry ×0.7 instead of ×0.5.' });
@@ -874,13 +893,14 @@
   // elder events teach hidden grammar; knowledge is permanent and unlisted
   function applyElder(run, ev) {
     run.meta.secrets.add(ev.teaches);
+    run.meta.elderDrought = 0;
     return true;
   }
 
   return {
     makeRng, pick,
     SOLVE_MULT, IMPROV_MULT, DEEP_FORMS, FREE_FORMS,
-    knowSet, chipMax,
+    knowSet, chipMax, MAX_LEN,
     createBattle, newRun, buildWorlds, battleForNode, currentStage, globalStageIdx, advance,
     guess, canGuess, useQuill, judge, serveMystery, chooseLength, guessableLengths, revealLetter,
     castWord, canSpell, tilesFor, spellableWords, mulligan, endTurn,

@@ -22,6 +22,7 @@
  * in its ALT spelling, wedded by the joiner):
  *   Union       LR1 + ET + ALT2 + medium1        IGNIETUNDUS (11)
  *   Grand Union LR1 + ET + ALT2 + large1         IGNIETUNDRIS (12)
+ *   Woven Union LR1 + ET + ALT2 + CENTER         IGNIETUNDORA (10+|C|)
  *
  * The Scribe's Elision (sandhi): twin vowels never touch — the second
  * transmutes: A→E, E→A, I→E, O→U, U→O.
@@ -130,6 +131,7 @@
     sovereign:  { name: 'Sovereign',   note: 'ROOT + binder + CENTER + large suffix. The whole grammar, spoken at once.' },
     union:      { name: 'Union',       note: 'ROOT + binder + JOINER + a second element’s ALT spelling + the first element’s medium suffix. Two natures, one word.' },
     grandunion: { name: 'Grand Union', note: 'As the Union, but sealed with the large suffix. The mightiest weavings known.' },
+    weaveunion: { name: 'Woven Union', note: 'ROOT + binder + JOINER + a second element’s ALT spelling + a CENTER woven at the end. Two natures and a shape — the deepest weavings of all (11–13 runes).' },
   };
   const FORM_IDS = Object.keys(FORMS);
 
@@ -142,8 +144,9 @@
   };
   const FORM_DEF = Object.assign({}, FORMS, SECRET_FORMS);
 
-  // magnitude by tier; tier = word length − 3 (length IS power)
-  const MAG = [0, 5, 8, 12, 16, 21, 27, 34, 42, 52];
+  // magnitude by tier; tier = word length − 3 (length IS power).
+  // Tier 10 (13 runes) belongs to the grand Woven Unions.
+  const MAG = [0, 5, 8, 12, 16, 21, 27, 34, 42, 52, 64];
   const tierOf = (len) => Math.min(MAG.length - 1, len - 3);
 
   /* ---------------- assembly ---------------- */
@@ -190,6 +193,7 @@
       case 'selfsame': return ease(el, LR, el.alt + el.medium);
       case 'union': return LR + J + el2.alt + el.medium;
       case 'grandunion': return LR + J + el2.alt + el.large;
+      case 'weaveunion': return LR + J + el2.alt + center.seq;
       default: throw new Error('bad form ' + form);
     }
   }
@@ -390,14 +394,34 @@
         addWord(el, 'selfsame', null, null, spelling);
       }
       // blends: primary spelling only; the second element in its ALT spelling.
-      // Both joiners wed every pair: ET openly, AC in secret.
+      // Both joiners wed every pair: ET openly, AC in secret. Every center —
+      // public and secret — can be woven into the blend (the Woven Union).
       for (const el2 of ALL_ELEMENTS) {
         if (el2.id === el.id || el.hiddenEl) continue;
         for (const j of ALL_JOINERS) {
           addWord(el, 'union', null, el2, null, j);
           addWord(el, 'grandunion', null, el2, null, j);
+          for (const c of ALL_CENTERS) addWord(el, 'weaveunion', c, el2, null, j);
         }
       }
+    }
+    /* The Undivided Vowel (secret rule): every visible word the Elision
+     * reshaped casts a hidden twin — the raw spelling, vowels standing.
+     * Speaking the twin needs the secret rule, and it runs ×1.25. */
+    for (const src of LIST.filter(e => e.elided && !e.hidden)) {
+      const el = EL_BY_ID[src.el];
+      const raw = rawAssemble(el, src.form, src.center ? CENTER_BY_ID[src.center] : null,
+        src.el2 ? EL_BY_ID[src.el2] : null, null, src.joiner ? JOINER_BY_ID[src.joiner] : null);
+      if (WORDS[raw]) throw new Error('twin collision: ' + raw);
+      const fx = scaleFx(src.fx, 1.25);
+      const entry = Object.assign({}, src, {
+        word: raw, hidden: true, elided: false, fx,
+        name: '✧ Undivided ' + src.name,
+        parts: src.parts.filter(pid => pid !== 'rule:elision').concat(['srule:twin']),
+        desc: describeFx(fx, el),
+      });
+      WORDS[raw] = entry;
+      LIST.push(entry);
     }
     return { WORDS, LIST };
   }
@@ -405,10 +429,15 @@
   const VISIBLE = LEX.LIST.filter(e => !e.hidden);
 
   /* letters: weighted by the visible lexicon; the hidden grammar seeps in
-   * faintly, so its stranger letters exist as rare tiles */
+   * faintly, so its stranger letters exist as rare tiles. The 900 Woven
+   * Unions would otherwise drown the bag in their joiner letters, so the
+   * deepest weavings color it only as faintly as the hidden grammar. */
   function letterWeights() {
     const freq = {};
-    for (const e of VISIBLE) for (const ch of e.word) freq[ch] = (freq[ch] || 0) + 1;
+    for (const e of VISIBLE) {
+      const w = e.form === 'weaveunion' ? 0.12 : 1;
+      for (const ch of e.word) freq[ch] = (freq[ch] || 0) + w;
+    }
     for (const e of LEX.LIST) if (e.hidden) for (const ch of e.word) freq[ch] = (freq[ch] || 0) + 0.12;
     for (const k in freq) freq[k] = Math.round(freq[k] * 100) / 100;
     return freq;
@@ -446,7 +475,7 @@
     add('rule:easing', '🫧', 'The Easing Vowel', "When a binder's consonant would strike another consonant, the element's small vowel eases the joint: UMBR+XI+S is written UMBROXIS.", 'rules');
     add('rule:length', '📏', 'Length is Power', 'A word’s tier is its length less three: every added rune deepens the magnitude (4 runes stir 5; 12 runes stir 52). Longer words need more — and rarer — tiles; that is the only price magic asks.', 'rules');
     PARTS['rule:length'].info = true;
-    add('rule:sizes', '🧿', 'The Three Sizes', 'Centers come short (2 runes), standard (3) and grand (4), and the same woven forms wrap any of them — so a Weave spans 6–8 runes, a Mirror 7–9, a Verse 8–10, a Sovereign 9–11. Cantrips are 4, Words 5, Bound Words 6; Unions run 11 and Grand Unions 12.', 'rules');
+    add('rule:sizes', '🧿', 'The Three Sizes', 'Centers come short (2 runes), standard (3) and grand (4), and the same woven forms wrap any of them — so a Weave spans 6–8 runes, a Mirror 7–9, a Verse 8–10, a Sovereign 9–11. Cantrips are 4, Words 5, Bound Words 6; Unions run 11, Grand Unions 12, and the Woven Unions 11–13.', 'rules');
     PARTS['rule:sizes'].info = true;
     return PARTS;
   }
@@ -460,7 +489,8 @@
     .concat(SECRET_ELEMENTS.map(e => 'selem:' + e.id))
     .concat(SECRET_CENTERS.map(c => 'scenter:' + c.id))
     .concat(SECRET_JOINERS.map(j => 'sjoin:' + j.id))
-    .concat(Object.keys(SECRET_FORMS).map(f => 'sform:' + f));
+    .concat(Object.keys(SECRET_FORMS).map(f => 'sform:' + f))
+    .concat(['srule:twin']);
   const SECRET_INFO = {};
   for (const el of ELEMENTS) {
     SECRET_INFO['sroot:' + el.id] = {
@@ -497,6 +527,11 @@
       note: SECRET_FORMS[f].note,
     };
   }
+  SECRET_INFO['srule:twin'] = {
+    id: 'srule:twin', icon: '👥',
+    title: 'The Undivided Vowel — the rule beneath the rule',
+    note: 'The Scribe’s Elision is a courtesy, not a law. Every word it reshaped has a raw twin — vowels standing undivided (GELAAS, VENOOX) — and the held breath runs ×1.25.',
+  };
 
   function readableCount(knowSet) {
     let n = 0;

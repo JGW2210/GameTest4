@@ -80,6 +80,8 @@
       text: 'A well with no bottom, and a rope with no end, and a knot every fathom spelling the same four runes: <b>ONZA</b> — the grand center that devours. It gnaws at what a foe may ever be again.' },
     { id: 's_ac', teaches: 'sjoin:ac', icon: '🗝', title: 'The Elder Vow', deep: true,
       text: 'Two rings rusted into one on a chapel floor, and beneath them the vow that fused them — not ET, the wedding everyone speaks, but the old word: <b>AC</b>. What AC joins runs closer, and hotter, than ET ever dared.' },
+    { id: 's_twin', teaches: 'srule:twin', icon: '👥', title: 'The Held Breath', deep: true,
+      text: 'A choirbook, and in it a hymn no choir finished — every doubled vowel left standing, unelided, like a breath held past bearing. GELAAS, it sings, not GELAES. The Scribe\'s Elision is a courtesy, the margin explains, <b>not a law</b>. Words that keep their twin vowels undivided run hotter for the strain.' },
     { id: 's_selfsame', teaches: 'sform:selfsame', icon: '𝔉', title: 'The Mirror Marriage', deep: true,
       text: 'A marriage record with one name written twice, in two different hands. The register calls the form <b>Selfsame</b>: an element wedded to itself — its long root, then its own late spelling, then its medium suffix. IGNICINUS. The church struck it from the record. The grammar did not.' },
     { id: 's_nih', teaches: 'selem:nih', icon: '⬛', title: 'The Unwritten Margin', deep: true,

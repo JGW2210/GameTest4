@@ -469,7 +469,7 @@
         speak.appendChild(el('div', 'sense-note',
           `🪡 The loom senses a word of <b>${s.best} runes</b> waiting in these tiles` +
           `${s.beyond ? ' — and something longer still, beyond its reach' : ''}.` +
-          ` <span class="dim">(your sense feels ${s.cap >= 12 ? 'any length' : 'to ' + s.cap + ' runes'})</span>`));
+          ` <span class="dim">(your sense feels ${s.cap >= Loom.MAX_LEN ? 'any length' : 'to ' + s.cap + ' runes'})</span>`));
       } else {
         speak.appendChild(el('div', 'sense-note faint',
           `🪡 The loom senses nothing within ${s.cap} runes — yet something longer stirs in these tiles.`));
@@ -494,7 +494,7 @@
     // length picker — the grammar itself gates the deep lengths
     const lens = Loom.guessableLengths(run);
     const lr = el('div', 'len-row');
-    for (let len = 4; len <= 12; len++) {
+    for (let len = 4; len <= Loom.MAX_LEN; len++) {
       const ok = lens.includes(len);
       const pill = el('button', 'len-pill' + (ok ? '' : ' locked') + (m && m.len === len ? ' selected' : ''), String(len));
       pill.title = ok ? `ask the loom for a ${len}-rune mystery` : 'its form note is not in your grimoire';
@@ -850,7 +850,19 @@
           `<span class="note-icon">${info.icon}</span><b>${info.title}</b><div class="small dim">${info.note}</div>`));
       });
       sec.appendChild(list);
-      if (left) sec.appendChild(el('div', 'small dim', `…and ${left} page${left > 1 ? 's' : ''} that still deny${left > 1 ? '' : 's'} being written.`));
+      if (left) {
+        const KINDS = [
+          ['sroot:', 'elder spellings'], ['selem:', 'unspoken elements'],
+          ['scenter:', 'secret centers'], ['sjoin:', 'secret joiners'],
+          ['sform:', 'secret forms'], ['srule:', 'secret rules'],
+        ];
+        const hunt = KINDS.map(([pre, label]) => {
+          const all = Morph.SECRET_IDS.filter(id => id.startsWith(pre));
+          const have = all.filter(id => meta.secrets.has(id));
+          return `${label} <b>${have.length}/${all.length}</b>`;
+        }).join(' · ');
+        sec.appendChild(el('div', 'small dim', `…and ${left} page${left > 1 ? 's' : ''} that still deny${left > 1 ? '' : 's'} being written: ${hunt}.`));
+      }
       $screen.appendChild(sec);
     }
     const back = el('button', null, '← Back');
@@ -867,8 +879,8 @@
         <tr><th></th><th>root</th><th>small</th><th>medium</th><th>large</th><th>binds with</th><th>late spelling</th></tr>
         ${Morph.ELEMENTS.map(e => `<tr><td>${e.icon} ${e.name}</td><td class="mono">${e.root}</td><td class="mono">-${e.small}</td><td class="mono">-${e.medium}</td><td class="mono">-${e.large}</td><td class="mono">${e.longRoot ? e.root + '→' + e.longRoot : e.root + '+' + e.conn}</td><td class="mono">${e.alt}</td></tr>`).join('')}
       </table></div>
-      <p class="small" style="margin-top:10px"><b>The nine forms:</b> IGNA → IGNUS → IGNIUS → IGNIORA (center-woven) →
-      IGNIAROS (mirror) → IGNIORUSA (verse) → IGNIORARIS (sovereign) → and the weddings: IGNIETUNDUS (Union, fire-and-water), IGNIETUNDRIS (Grand Union).</p>
+      <p class="small" style="margin-top:10px"><b>The ten forms:</b> IGNA → IGNUS → IGNIUS → IGNIORA (center-woven) →
+      IGNIAROS (mirror) → IGNIORUSA (verse) → IGNIORARIS (sovereign) → and the weddings: IGNIETUNDUS (Union, fire-and-water), IGNIETUNDRIS (Grand Union), IGNIETUNDORA (Woven Union — a center in the blend, to 13 runes).</p>
       <p class="small" style="margin-top:6px"><b>Centers</b> come short, standard, and grand:
       ${Morph.CENTERS.map(c => `<span class="mono">${c.seq}</span> ${c.name}`).join(' · ')}.</p>
       <p class="small" style="margin-top:6px"><b>The Scribe's Elision:</b> twin vowels never touch — the second transmutes (A→E, E→A, I→E, O→U, U→O).
