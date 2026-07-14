@@ -4,7 +4,8 @@
 
 **Play it:** open `index.html` in a browser (no build step), or serve the repo
 statically — the prototype is the deployment. The original card-based game,
-Lexicon Arcanum, lives on at [`lexicon-arcanum/`](lexicon-arcanum/).
+Lexicon Arcanum, lives on in the repo's history (the `claude/wordloom-prototype`
+branch keeps it at `lexicon-arcanum/`).
 
 ## The idea
 
@@ -99,7 +100,7 @@ js/save.js            notes + secret knowledge persist in localStorage
 tools/genwords.js     regenerate + validate the lexicon (--dump / --secrets)
 tools/simulate.js     headless balance runs
 MORPHOLOGY.md         the full grammar document
-lexicon-arcanum/      the original card-based game, complete and playable
+vendor/three.min.js   three.js r147, vendored (WebGL scene & spell FX)
 ```
 
 Debug: append `?debug=1` and use `window.LoomDebug` (learnAll, learnSome(n),
