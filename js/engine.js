@@ -1,31 +1,24 @@
 /* ============================================================
- * WORDLOOM — engine (pure logic, browser + Node)
+ * WORDLOOM — engine, second weaving (pure logic, browser + Node)
  *
- * The grimoire records NOTES, not words: solving a mystery word
- * inscribes the rules and parts it is built from (its root, suffix,
- * binder, center, form — even the Elision, the first time you catch
- * it at work). A word can be READ — cast at full power — once every
- * part it uses is in your grimoire. 64 notes read all 270 words.
+ * The grimoire records NOTES (rules and parts), never words. A word
+ * is READABLE — castable at full power — once every part it uses is
+ * known. Knowledge = public notes ∪ secret knowledge − sealed notes.
  *
- * The two loops:
- *   ACQUIRE — one free guess per turn at the mystery word (wordle
- *     feedback). Solve it → it casts at ×1.5 and its parts are
- *     inscribed FOREVER (across runs).
- *   DEPLOY — spell any readable word from your loom of letter
- *     tiles. Tiles are the only cost. Longer words need more (and
- *     rarer) letters: the cost curve IS the spelling.
- *
- * Improvisation: a grammatical word with parts you have not yet
- * inscribed can still be spoken — at half power. Deduction is the
- * only way to truly own the grammar.
+ * ACQUIRE: one free guess per turn at a mystery word of a LENGTH YOU
+ * CHOOSE (lengths beyond the basic forms are opened by form notes).
+ * DEPLOY: spell readable words from the loom. The loom SUGGESTS only
+ * words up to your class's chip range (+ Ribbon Index) — longer words
+ * must be spelled by hand, from knowledge.
  * ============================================================ */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = factory(require('./data/morphology.js'), require('./data/foes.js'));
+    module.exports = factory(require('./data/morphology.js'), require('./data/foes.js'),
+      require('./data/classes.js'), require('./data/events.js'));
   } else {
-    root.Loom = factory(root.Morph, root.Foes);
+    root.Loom = factory(root.Morph, root.Foes, root.Weavers, root.LoomEvents);
   }
-})(typeof self !== 'undefined' ? self : this, function (Morph, Foes) {
+})(typeof self !== 'undefined' ? self : this, function (Morph, Foes, Weavers, LoomEvents) {
 
   function makeRng(seed) {
     let a = seed >>> 0;
@@ -38,15 +31,23 @@
   }
   const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 
-  const TRAY_BASE = 12;
-  const PLAYER_HP = 52;
-  const SOLVE_MULT = 1.5;       // a word spoken true on the guess casts harder
-  const IMPROV_MULT = 0.5;      // valid-but-uninscribed words cast at half power
+  const SOLVE_MULT = 1.5;
+  const IMPROV_MULT = 0.5;
   const VOWELS = 'AEIOU';
+  // the deep form notes never drop from ordinary study — elites, bosses and
+  // the elder roads hold them
+  const DEEP_FORMS = ['form:mirror', 'form:verse', 'form:sovereign', 'form:union', 'form:grandunion'];
+  const FREE_FORMS = ['cantrip', 'word', 'bound']; // guessable without their note
 
-  /* ---------------- the letter bag ---------------- */
-  // Weighted by the lexicon's own letter frequency, with a vowel floor so
-  // a tray is never unspellable garbage.
+  /* ---------------- knowledge ---------------- */
+  function knowSet(meta, sealed) {
+    const s = new Set(meta.parts);
+    for (const id of meta.secrets) s.add(id);
+    if (sealed) for (const id of sealed) s.delete(id);
+    return s;
+  }
+
+  /* ---------------- letter bag & tray ---------------- */
   function drawLetter(rng, bag) {
     let total = 0;
     for (const ch in bag) total += bag[ch];
@@ -54,14 +55,11 @@
     for (const ch in bag) { r -= bag[ch]; if (r <= 0) return ch; }
     return 'A';
   }
-
   let tileSeq = 1;
   function drawTile(rng, bag) { return { id: tileSeq++, ch: drawLetter(rng, bag), frozen: 0 }; }
-
   function refillTray(b) {
     const want = b.traySize - b.tray.length;
     for (let i = 0; i < want; i++) b.tray.push(drawTile(b.rng, b.bag));
-    // vowel floor: at least 4 vowels among 12 (scaled to tray size)
     const floor = Math.max(3, Math.round(b.traySize / 3));
     let vowels = b.tray.filter(t => VOWELS.includes(t.ch)).length;
     let guard = 0;
@@ -80,36 +78,35 @@
     return {
       id, name: f.name, icon: f.icon, boss: !!f.boss, elite: !!f.elite,
       hp, maxHp: hp, str: 0, dmgScale: scale,
-      weakTo: f.weakTo || null, resist: f.resist || null,
+      weakTo: f.weakTo || null, resist: f.resist || null, adaptive: !!f.adaptive,
       gimmick: f.gimmick, regen: f.regen || 0,
-      poison: 0, burn: 0, burnTurns: 0, blind: 0, chill: 0, stun: 0,
+      poison: 0, burn: 0, burnTurns: 0, blind: 0, chill: 0, scald: 0, stun: 0, hushed: 0,
       pattern: f.pattern, patternIdx: 0,
     };
   }
 
   function createBattle(run, foeIds, scale) {
-    // foeIds entries: 'id' or { id, mult } for weakened companions
     const b = {
-      rng: run.rng,
-      run,
-      foes: foeIds.map(fid => typeof fid === 'string'
-        ? makeFoe(fid, scale)
-        : makeFoe(fid.id, scale * (fid.mult || 1))),
+      rng: run.rng, run,
+      foes: foeIds.map(fid => typeof fid === 'string' ? makeFoe(fid, scale) : makeFoe(fid.id, scale * (fid.mult || 1))),
       target: 0,
       player: { hp: run.hp, maxHp: run.maxHp, block: 0, blooms: [] },
-      traySize: run.traySize,
-      bag: run.bag,
-      tray: [],
-      cursedLetter: null,      // cannot appear in guesses this turn
-      mulligans: 1,
+      traySize: run.traySize, bag: run.bag, tray: [],
+      cursedLetter: null,
+      mulligans: 1 + (run.perks.mulligans || 0),
+      guessesPerTurn: 1,
+      quillUsed: false,
+      sealedNotes: new Set(),
       turn: 0, over: false, won: false,
-      guessedThisTurn: false,
+      guessesThisTurn: 0,
       mystery: null,
-      log: [],
-      stats: { casts: 0, improvs: 0, solves: 0, notes: [] },
+      log: [], stats: { casts: 0, improvs: 0, solves: 0, notes: [] },
     };
     refillTray(b);
-    serveMystery(b);
+    const lens = guessableLengths(run);
+    serveMystery(b, run.flags.longmystery ? lens[Math.min(lens.length - 1, 1)] : lens[0]);
+    run.flags.longmystery = false;
+    if (run.flags.revealNext) { revealLetter(b); run.flags.revealNext = false; }
     b.turn = 1;
     return b;
   }
@@ -121,42 +118,38 @@
     if (a.length) b.target = b.foes.indexOf(a[0]);
     return a[0] || b.foes[0];
   }
-
   function say(b, msg) { b.log.push(msg); }
 
-  /* ---------------- the mystery word (ACQUIRE loop) ---------------- */
-  function unknownWords(run, lens) {
-    return Morph.LIST.filter(e => lens.includes(e.len) && !run.meta.solved.has(e.word));
+  /* ---------------- the mystery word & length choice ---------------- */
+  function unsolvedAt(meta, len, formsAllowed) {
+    return Morph.VISIBLE.filter(e => e.len === len && !meta.solved.has(e.word)
+      && (FREE_FORMS.includes(e.form) || formsAllowed.has('form:' + e.form)));
   }
-
-  // Inscribe every part a word is built from; returns the NEW notes.
-  function inscribeParts(meta, entry) {
-    const fresh = [];
-    for (const pid of entry.parts) {
-      if (!meta.parts.has(pid)) { meta.parts.add(pid); fresh.push(pid); }
+  // every length the player may currently REQUEST
+  function guessableLengths(run) {
+    const formsAllowed = knowSet(run.meta);
+    const out = [];
+    for (let len = 4; len <= 12; len++) {
+      if (unsolvedAt(run.meta, len, formsAllowed).length) out.push(len);
     }
-    return fresh;
+    return out.length ? out : [4];
   }
 
-  // Serve lengths grow with the grimoire's notes: short words first, the
-  // long weaves once the grammar starts to open. (64 notes total.)
-  function servableLens(run) {
-    const n = run.meta.parts.size;
-    if (n < 10) return [4, 5];
-    if (n < 16) return [4, 5, 6];
-    if (n < 24) return [5, 6, 7];
-    if (n < 36) return [6, 7, 8];
-    return [7, 8, 9, 10];
-  }
-
-  function serveMystery(b) {
-    const lens = servableLens(b.run);
-    let pool = unknownWords(b.run, lens);
-    if (!pool.length) pool = Morph.LIST.filter(e => !b.run.meta.solved.has(e.word));
-    if (!pool.length) pool = Morph.LIST; // omniscient player: serve anything
+  function serveMystery(b, len) {
+    const formsAllowed = knowSet(b.run.meta, b.sealedNotes);
+    let pool = unsolvedAt(b.run.meta, len, formsAllowed);
+    if (!pool.length) pool = Morph.VISIBLE.filter(e => !b.run.meta.solved.has(e.word) && FREE_FORMS.includes(e.form));
+    if (!pool.length) pool = Morph.VISIBLE;
     const e = pick(b.rng, pool);
     b.mystery = { answer: e.word, len: e.len, guesses: [], revealed: [] };
     say(b, `📜 A ${e.len}-rune mystery word waits on the loom's margin.`);
+  }
+
+  function chooseLength(b, len) {
+    if (b.over) return false;
+    if (!guessableLengths(b.run).includes(len)) return false;
+    serveMystery(b, len);
+    return true;
   }
 
   function judge(guess, answer) {
@@ -173,7 +166,22 @@
     return marks;
   }
 
-  function canGuess(b) { return !b.over && !!b.mystery && !b.guessedThisTurn; }
+  function canGuess(b) { return !b.over && !!b.mystery && b.guessesThisTurn < b.guessesPerTurn; }
+  function useQuill(b) {
+    if (b.quillUsed || !b.run.perks.quill || canGuess(b)) return false;
+    b.quillUsed = true;
+    b.guessesThisTurn = Math.max(0, b.guessesThisTurn - 1);
+    say(b, '🪶 The Quill of Second Thoughts grants another guess.');
+    return true;
+  }
+
+  function inscribeParts(meta, entry) {
+    const fresh = [];
+    for (const pid of entry.parts) {
+      if (Morph.PARTS[pid] && !meta.parts.has(pid)) { meta.parts.add(pid); fresh.push(pid); }
+    }
+    return fresh;
+  }
 
   function guess(b, raw) {
     if (!canGuess(b)) return { ok: false, reason: 'spent' };
@@ -181,7 +189,7 @@
     const m = b.mystery;
     if (g.length !== m.len) return { ok: false, reason: 'length' };
     if (b.cursedLetter && g.includes(b.cursedLetter)) return { ok: false, reason: 'cursed' };
-    b.guessedThisTurn = true;
+    b.guessesThisTurn++;
     const marks = judge(g, m.answer);
     m.guesses.push({ word: g, marks });
     const correct = g === m.answer;
@@ -193,14 +201,10 @@
       const fresh = inscribeParts(b.run.meta, entry);
       b.stats.notes.push(...fresh);
       say(b, `🌟 <b>${word}</b> — spoken true!`);
-      if (fresh.length) {
-        const titles = fresh.map(pid => Morph.PARTS[pid].title).join(' · ');
-        say(b, `✒️ New notes in your grimoire: <b>${titles}</b> — yours forever.`);
-      } else {
-        say(b, '✒️ Its grammar was already yours — the solving was pure craft.');
-      }
+      if (fresh.length) say(b, `✒️ New notes: <b>${fresh.map(pid => Morph.PARTS[pid].title).join(' · ')}</b> — yours forever.`);
+      else say(b, '✒️ Its grammar was already yours — the solving was pure craft.');
       castWordFx(b, word, SOLVE_MULT, 'solved');
-      if (!b.over) serveMystery(b);
+      if (!b.over) serveMystery(b, m.len);
       return { ok: true, correct: true, marks, notes: fresh };
     }
     return { ok: true, correct: false, marks };
@@ -218,12 +222,10 @@
     return true;
   }
 
-  /* ---------------- spelling from the loom (DEPLOY loop) ---------------- */
-  // Which tray tiles would spell this word? null if impossible.
+  /* ---------------- spelling from the loom ---------------- */
   function tilesFor(b, word) {
-    const avail = b.tray.filter(t => !t.frozen);
+    const pool = b.tray.filter(t => !t.frozen).slice();
     const used = [];
-    const pool = avail.slice();
     for (const ch of word) {
       const idx = pool.findIndex(t => t.ch === ch);
       if (idx < 0) return null;
@@ -233,13 +235,22 @@
   }
   const canSpell = (b, word) => !!tilesFor(b, word);
 
+  function chipMax(run) {
+    return Math.min(12, run.cls.chipMax + (run.perks.ribbon || 0));
+  }
+
+  // words the loom will SUGGEST: readable + payable + within chip range.
+  // (Anything readable can still be spelled by hand — this is the index,
+  // not the permission. Hidden words never appear here, ever.)
   function spellableWords(b) {
-    // every READABLE word (all its parts inscribed) the current tray can pay for
+    const know = knowSet(b.run.meta, b.sealedNotes);
+    const cap = chipMax(b.run);
     const out = [];
-    for (const e of Morph.LIST) {
-      if (Morph.canRead(b.run.meta.parts, e) && canSpell(b, e.word)) out.push(e);
+    for (const e of Morph.VISIBLE) {
+      if (e.len > cap) continue;
+      if (Morph.canRead(know, e) && canSpell(b, e.word)) out.push(e);
     }
-    return out.sort((a, z) => z.len - a.len || (a.word < z.word ? -1 : 1));
+    return out.sort((a, z) => z.len - a.len || (a.word < z.word ? -1 : 1)).slice(0, 12);
   }
 
   function castWord(b, word) {
@@ -249,31 +260,53 @@
     if (!entry) return { ok: false, reason: 'not-a-word' };
     const tiles = tilesFor(b, word);
     if (!tiles) return { ok: false, reason: 'tiles' };
-    const readable = Morph.canRead(b.run.meta.parts, entry);
-    // spend the tiles
+    const know = knowSet(b.run.meta, b.sealedNotes);
+    const readable = Morph.canRead(know, entry);
     for (const t of tiles) b.tray.splice(b.tray.indexOf(t), 1);
     if (readable) { b.stats.casts++; castWordFx(b, word, 1, 'cast'); }
     else {
       b.stats.improvs++;
-      say(b, `〰 You improvise <b>${word}</b> — its grammar escapes you, so it carries half its strength.`);
-      castWordFx(b, word, IMPROV_MULT, 'improvised');
+      const improv = IMPROV_MULT + (b.run.perks.whetstone ? 0.2 : 0);
+      say(b, `〰 You improvise <b>${word}</b> — its grammar escapes you (×${improv}).`);
+      castWordFx(b, word, improv, 'improvised');
     }
     return { ok: true, inscribed: readable };
   }
 
   function elemMult(foe, elId) {
+    if (!elId) return 1;
     if (foe.weakTo === elId) return 1.5;
     if (foe.resist === elId) return 0.5;
     return 1;
   }
 
-  function hitFoe(b, foe, dmg, elId) {
-    const mult = elemMult(foe, elId);
+  function hitFoe(b, foe, dmg, elId, opts) {
+    opts = opts || {};
+    let mult = opts.trueDmg ? 1 : elemMult(foe, elId);
+    if (opts.execute && foe.hp <= foe.maxHp * opts.execute) mult *= 1.6;
     const d = Math.max(0, Math.round(dmg * mult));
+    const hpBefore = foe.hp;
     foe.hp -= d;
-    const tag = mult > 1 ? ' — it fears this!' : mult < 1 ? ' (resisted)' : '';
+    const tag = !opts.trueDmg && mult > 1 ? ' — it fears this!' : (!opts.trueDmg && mult < 1 ? ' (resisted)' : '');
     say(b, `⚔ ${foe.icon} ${foe.name} takes <b>${d}</b>${tag}`);
-    if (foe.hp <= 0) { foe.hp = 0; say(b, `✝ ${foe.name} is unwritten.`); }
+    if (foe.adaptive && elId && foe.hp > 0) { foe.resist = elId; say(b, `🗿 ${foe.name} calcifies against ${Morph.EL_BY_ID[elId].name.toLowerCase()}.`); }
+    if (foe.hp <= 0) {
+      foe.hp = 0;
+      say(b, `✝ ${foe.name} is unwritten.`);
+      if (b.sealedNotes.size && (foe.boss || foe.elite)) {
+        b.sealedNotes.clear();
+        say(b, '📖 Your sealed notes breathe open again.');
+      }
+      // overkill: the Beyond spills past the corpse
+      if (opts.overkill) {
+        const spill = d - hpBefore;
+        const next = alive(b)[0];
+        if (spill > 0 && next) {
+          say(b, '🌌 The Beyond spills onward.');
+          hitFoe(b, next, spill, elId, { trueDmg: true });
+        }
+      }
+    }
     checkEnd(b);
     return d;
   }
@@ -283,15 +316,19 @@
     if (amt > 0) { b.player.hp += amt; say(b, `💚 You mend <b>${amt}</b>.`); }
   }
 
-  // Apply a word's fx at a multiplier. Used for casts, solves, improvs,
-  // verse pulses and blooms.
   function castWordFx(b, word, mult, how) {
     const entry = Morph.WORDS[word];
     const el = Morph.EL_BY_ID[entry.el];
-    let fx = entry.fx;
-    if (how !== 'bloom') say(b, `${el.icon} <b>${word}</b> — ${entry.name}${mult !== 1 ? ` ×${mult}` : ''}`);
+    const fx = entry.fx;
+    mult *= b.run.cls.power || 1;
+    if (how !== 'bloom') say(b, `${el.icon} <b>${word}</b> — ${entry.name}${mult !== 1 ? ` ×${Math.round(mult * 100) / 100}` : ''}`);
+    if (fx.selfCost && how !== 'bloom') {
+      b.player.hp -= fx.selfCost;
+      say(b, `🩸 The word drinks <b>${fx.selfCost}</b> of your own ink.`);
+      checkEnd(b);
+      if (b.over) return;
+    }
     applyFx(b, fx, el, mult, entry);
-    // chained recast (the Chain center)
     let chains = 0;
     while (fx.chain && !b.over && chains < 3 && b.rng() < fx.chain) {
       chains++;
@@ -307,27 +344,47 @@
     let dealt = 0;
     for (const f of victims) {
       if (fx.dmg) {
-        let d = fx.dmg;
-        if (fx.wild) d = d * (1 - fx.wild + b.rng() * fx.wild * 2); // storm swings
-        dealt += hitFoe(b, f, M(d), el.id);
+        let base = fx.dmg;
+        if (fx.wild) base = base * (1 - fx.wild + b.rng() * fx.wild * 2);
+        const hits = fx.hits || 1;
+        const per = M(base) / hits;
+        for (let h = 0; h < hits && f.hp > 0 && !b.over; h++) {
+          dealt += hitFoe(b, f, Math.round(per), el.id, fx);
+        }
       }
       if (fx.burn && f.hp > 0) {
-        const scaled = Math.round(M(fx.burn) * elemMult(f, el.id));
+        const scaled = Math.round(M(fx.burn) * (fx.trueDmg ? 1 : elemMult(f, el.id)));
         if (scaled > 0) { f.burn += scaled; f.burnTurns = Math.max(f.burnTurns, fx.burnTurns || 2); }
       }
       if (fx.poison && f.hp > 0) {
-        const scaled = Math.round(M(fx.poison) * elemMult(f, el.id));
+        const scaled = Math.round(M(fx.poison) * (fx.trueDmg ? 1 : elemMult(f, el.id)));
         if (scaled > 0) f.poison += scaled;
       }
+      if (fx.erode && f.hp > 0) {
+        f.maxHp = Math.max(5, f.maxHp - M(fx.erode));
+        f.hp = Math.min(f.hp, f.maxHp);
+        say(b, `⬛ ${f.name}'s utmost vigor is erased (−${M(fx.erode)}).`);
+        checkEnd(b);
+      }
       if (fx.chill && f.hp > 0) f.chill = Math.max(f.chill, fx.chill);
+      if (fx.scald && f.hp > 0) f.scald = Math.max(f.scald, fx.scald);
       if (fx.blind && f.hp > 0) f.blind += fx.blind;
+      if (fx.hush && f.hp > 0) { f.hushed += fx.hush; say(b, `🤫 ${f.name}'s tricks are hushed.`); }
       if (fx.stunChance && f.hp > 0 && b.rng() < fx.stunChance) { f.stun += 1; say(b, `💫 ${f.name} reels, stunned!`); }
+    }
+    if (fx.splash && dealt > 0 && !fx.aoe) {
+      for (const other of alive(b)) {
+        if (other === targetFoe(b)) continue;
+        say(b, '🌊 The wave crests over another.');
+        hitFoe(b, other, Math.round(dealt * fx.splash), el.id, { trueDmg: true });
+        if (b.over) break;
+      }
     }
     if (fx.drain && dealt > 0) healPlayer(b, Math.round(dealt * fx.drain));
     if (fx.block) { b.player.block += M(fx.block); say(b, `🛡 Stone rises: +${M(fx.block)}.`); }
     if (fx.mirrorBlock) b.player.block += fx.mirrorBlock;
     if (fx.heal) healPlayer(b, M(fx.heal));
-    if (fx.maxHp) { b.player.maxHp += fx.maxHp; b.player.hp += fx.maxHp; }
+    if (fx.maxHp) { b.player.maxHp += fx.maxHp; b.player.hp += fx.maxHp; b.run.maxHp = b.player.maxHp; }
     if (fx.cleanse && b.cursedLetter) { b.cursedLetter = null; say(b, '💧 The inked-out letter washes clean.'); }
     if (fx.gust) {
       for (let i = 0; i < fx.gust; i++) if (b.tray.length < b.traySize + 2) b.tray.push(drawTile(b.rng, b.bag));
@@ -339,30 +396,31 @@
       say(b, `🌱 <b>${entry.word}</b> takes seed — it will bloom again.`);
     }
     if (fx.versePulse && entry && !b._blooming) {
-      // the Verse contains its element's Word (L5) — it echoes after
-      const l5 = Morph.LIST.find(e => e.el === entry.el && e.len === 5);
-      if (l5) { say(b, `🎶 The verse hums its inner word — <b>${l5.word}</b> echoes.`); castWordFx(b, l5.word, mult, 'bloom'); }
+      const inner = Morph.LIST.find(e => e.el === entry.el && e.form === 'word' && !e.hidden && !e.secretSpelling);
+      if (inner) { say(b, `🎶 The verse hums its inner word — <b>${inner.word}</b> echoes.`); castWordFx(b, inner.word, mult / (b.run.cls.power || 1), 'bloom'); }
     }
   }
 
   function mulligan(b) {
     if (b.over || b.mulligans <= 0) return false;
     b.mulligans--;
-    b.tray = b.tray.filter(t => t.frozen); // frozen tiles stay stuck
+    b.tray = b.tray.filter(t => t.frozen);
     refillTray(b);
     say(b, '♻ You sweep the loom and draw fresh letters.');
     return true;
   }
 
-  /* ---------------- foe turn / end turn ---------------- */
-  function foeIntent(b, f) {
-    let move = f.pattern[f.patternIdx % f.pattern.length];
-    return move;
-  }
+  /* ---------------- foe turn ---------------- */
+  function foeIntent(b, f) { return f.pattern[f.patternIdx % f.pattern.length]; }
 
   function describeIntent(b, f) {
     const m = foeIntent(b, f);
-    const dmg = (n) => Math.max(1, Math.round(n * f.dmgScale) + f.str - (f.chill ? Math.ceil((Math.round(n * f.dmgScale) + f.str) * 0.35) : 0));
+    const dmg = (n) => {
+      let d = Math.round(n * f.dmgScale) + f.str;
+      if (f.chill) d = Math.max(1, d - Math.ceil(d * 0.35));
+      if (f.scald) d = Math.max(1, Math.ceil(d * 0.5));
+      return d;
+    };
     switch (m.kind) {
       case 'attack': return { icon: '⚔️', text: m.hits > 1 ? `${dmg(m.n)}×${m.hits}` : `${dmg(m.n)}`, kind: 'attack' };
       case 'devour': return { icon: '👅', text: `eats ${m.n} vowel${m.n > 1 ? 's' : ''}${m.dmg ? ` +${dmg(m.dmg)}` : ''}`, kind: 'devour' };
@@ -371,6 +429,10 @@
       case 'curse': return { icon: '🚫', text: 'inks out a letter', kind: 'curse' };
       case 'scramble': return { icon: '🌀', text: 'scrambles your loom', kind: 'scramble' };
       case 'brood': return { icon: '💪', text: `+${m.str} strength`, kind: 'brood' };
+      case 'stealTile': return { icon: '🫳', text: `steals ${m.n} tile${m.n > 1 ? 's' : ''} & mends${m.dmg ? ` +${dmg(m.dmg)}` : ''}`, kind: 'stealTile' };
+      case 'shuffleGuess': return { icon: '🌫', text: `blurs a guess${m.dmg ? ` +${dmg(m.dmg)}` : ''}`, kind: 'shuffleGuess' };
+      case 'sap': return { icon: '🫗', text: 'saps a revealed rune', kind: 'sap' };
+      case 'sealNote': return { icon: '🔒', text: 'seals a grimoire note', kind: 'sealNote' };
       default: return { icon: '❔', text: '?', kind: '?' };
     }
   }
@@ -381,6 +443,7 @@
       if (f.blind > 0 && b.rng() < 0.5) { say(b, `🌫 ${f.name} strikes only shadow.`); continue; }
       let d = Math.round(n * f.dmgScale) + f.str;
       if (f.chill > 0) d = Math.max(1, d - Math.ceil(d * 0.35));
+      if (f.scald > 0) { d = Math.max(1, Math.ceil(d * 0.5)); f.scald--; say(b, '♨️ Scalded, it falters.'); }
       const absorbed = Math.min(b.player.block, d);
       b.player.block -= absorbed;
       const loss = d - absorbed;
@@ -390,10 +453,103 @@
     }
   }
 
+  function doFoeMove(b, f, m) {
+    switch (m.kind) {
+      case 'attack': foeAttack(b, f, m.n, m.hits); break;
+      case 'devour': {
+        let eaten = 0;
+        for (let i = 0; i < m.n; i++) {
+          const idx = b.tray.findIndex(t => VOWELS.includes(t.ch));
+          if (idx >= 0) { b.tray.splice(idx, 1); eaten++; }
+        }
+        if (eaten) say(b, `👅 ${f.name} devours ${eaten} vowel${eaten > 1 ? 's' : ''} from your loom!`);
+        if (m.dmg) foeAttack(b, f, m.dmg, 1);
+        b._trayDebt = (b._trayDebt || 0) + eaten;
+        break;
+      }
+      case 'freeze': {
+        const free = b.tray.filter(t => !t.frozen);
+        for (let i = 0; i < m.n && free.length; i++) {
+          const t = free.splice(Math.floor(b.rng() * free.length), 1)[0];
+          t.frozen = 2;
+        }
+        say(b, `🧊 ${f.name} rimes ${m.n} of your tiles.`);
+        break;
+      }
+      case 'burnTile': {
+        let burned = 0;
+        for (let i = 0; i < m.n; i++) {
+          const free = b.tray.filter(t => !t.frozen);
+          if (!free.length) break;
+          b.tray.splice(b.tray.indexOf(pick(b.rng, free)), 1);
+          burned++;
+        }
+        if (burned) say(b, `🔥 ${f.name} burns ${burned} tile${burned > 1 ? 's' : ''} to ash.`);
+        if (m.dmg) foeAttack(b, f, m.dmg, 1);
+        break;
+      }
+      case 'curse': {
+        const common = 'AEIOURSNT';
+        b.cursedLetter = common[Math.floor(b.rng() * common.length)];
+        say(b, `🚫 ${f.name} inks out <b>${b.cursedLetter}</b> — you cannot guess with it next turn.`);
+        break;
+      }
+      case 'scramble':
+        b.tray = b.tray.filter(t => t.frozen);
+        refillTray(b);
+        say(b, `🌀 ${f.name} scrambles your whole loom!`);
+        break;
+      case 'brood': f.str += m.str; say(b, `💪 ${f.name} swells with malice (+${m.str}).`); break;
+      case 'stealTile': {
+        let stolen = 0;
+        for (let i = 0; i < m.n && b.tray.length; i++) {
+          let idx;
+          if (f.id === 'indexwyrm') {
+            idx = b.tray.reduce((best, t, ti) => t.ch < b.tray[best].ch ? ti : best, 0);
+          } else idx = Math.floor(b.rng() * b.tray.length);
+          b.tray.splice(idx, 1);
+          stolen++;
+        }
+        if (stolen) {
+          const mend = stolen * Math.round(3 * f.dmgScale);
+          f.hp = Math.min(f.maxHp, f.hp + mend);
+          say(b, `🫳 ${f.name} steals ${stolen} tile${stolen > 1 ? 's' : ''} and mends <b>${mend}</b>.`);
+        }
+        if (m.dmg) foeAttack(b, f, m.dmg, 1);
+        break;
+      }
+      case 'shuffleGuess': {
+        const rows = b.mystery ? b.mystery.guesses.filter(g => g.marks.some(x => x !== 'blur')) : [];
+        if (rows.length) {
+          const row = pick(b.rng, rows);
+          row.marks = row.marks.map(() => 'blur');
+          say(b, `🌫 ${f.name} blurs your guess of <b>${row.word}</b> — its colors are gone.`);
+        }
+        if (m.dmg) foeAttack(b, f, m.dmg, 1);
+        break;
+      }
+      case 'sap': {
+        if (b.mystery && b.mystery.revealed.length) {
+          const r = b.mystery.revealed.pop();
+          say(b, `🫗 ${f.name} saps the revealed rune <b>${r.c}</b> back into darkness.`);
+        } else foeAttack(b, f, 5, 1);
+        break;
+      }
+      case 'sealNote': {
+        const candidates = Array.from(b.run.meta.parts).filter(pid => !b.sealedNotes.has(pid));
+        if (candidates.length) {
+          const pid = pick(b.rng, candidates);
+          b.sealedNotes.add(pid);
+          say(b, `🔒 ${f.name} seals your note — <b>${Morph.PARTS[pid] ? Morph.PARTS[pid].title : pid}</b> sleeps until this foe is unwritten.`);
+        }
+        break;
+      }
+    }
+  }
+
   function endTurn(b) {
     if (b.over) return;
     b.cursedLetter = null;
-    // blooms fire before the foes act
     b._blooming = true;
     for (const bl of b.player.blooms) {
       say(b, `🌱 <b>${bl.word}</b> blooms.`);
@@ -407,7 +563,6 @@
     for (const f of b.foes) {
       if (b.over) break;
       if (f.hp <= 0) continue;
-      // dots
       if (f.poison > 0) { f.hp -= f.poison; say(b, `☠ ${f.name} suffers ${f.poison} venom.`); f.poison--; }
       if (f.hp > 0 && f.burn > 0 && f.burnTurns > 0) {
         f.hp -= f.burn; say(b, `🔥 ${f.name} burns for ${f.burn}.`);
@@ -418,68 +573,27 @@
       if (f.stun > 0) { f.stun--; say(b, `💫 ${f.name} is stunned — it does nothing.`); }
       else {
         const m = foeIntent(b, f);
-        switch (m.kind) {
-          case 'attack': foeAttack(b, f, m.n, m.hits); break;
-          case 'devour': {
-            let eaten = 0;
-            for (let i = 0; i < m.n; i++) {
-              const idx = b.tray.findIndex(t => VOWELS.includes(t.ch));
-              if (idx >= 0) { b.tray.splice(idx, 1); eaten++; }
-            }
-            if (eaten) say(b, `👅 ${f.name} devours ${eaten} vowel${eaten > 1 ? 's' : ''} from your loom!`);
-            if (m.dmg) foeAttack(b, f, m.dmg, 1);
-            b._trayDebt = (b._trayDebt || 0) + eaten; // devoured tiles refill a turn late
-            break;
-          }
-          case 'freeze': {
-            const free = b.tray.filter(t => !t.frozen);
-            for (let i = 0; i < m.n && free.length; i++) {
-              const t = free.splice(Math.floor(b.rng() * free.length), 1)[0];
-              t.frozen = 2; // thaws at the START of your next-next turn
-            }
-            say(b, `🧊 ${f.name} rimes ${m.n} of your tiles.`);
-            break;
-          }
-          case 'burnTile': {
-            let burned = 0;
-            for (let i = 0; i < m.n; i++) {
-              const free = b.tray.filter(t => !t.frozen);
-              if (!free.length) break;
-              b.tray.splice(b.tray.indexOf(pick(b.rng, free)), 1);
-              burned++;
-            }
-            if (burned) say(b, `🔥 ${f.name} burns ${burned} tile${burned > 1 ? 's' : ''} to ash.`);
-            if (m.dmg) foeAttack(b, f, m.dmg, 1);
-            break;
-          }
-          case 'curse': {
-            const common = 'AEIOURSNT';
-            b.cursedLetter = common[Math.floor(b.rng() * common.length)];
-            say(b, `🚫 ${f.name} inks out <b>${b.cursedLetter}</b> — you cannot guess with it next turn.`);
-            break;
-          }
-          case 'scramble':
-            b.tray = b.tray.filter(t => t.frozen);
-            refillTray(b);
-            say(b, `🌀 ${f.name} scrambles your whole loom!`);
-            break;
-          case 'brood': f.str += m.str; say(b, `💪 ${f.name} swells with malice (+${m.str}).`); break;
+        if (f.hushed > 0 && m.kind !== 'attack') {
+          f.hushed--;
+          f.patternIdx++;
+          say(b, `🤫 ${f.name} opens its mouth — and nothing comes out.`);
+        } else {
+          doFoeMove(b, f, m);
+          f.patternIdx++;
         }
-        f.patternIdx++;
       }
       if (f.blind > 0) f.blind--;
       if (f.chill > 0) f.chill--;
     }
     if (b.over) return;
-    // your next turn begins
     b.turn++;
     b.player.block = 0;
-    b.guessedThisTurn = false;
+    b.guessesThisTurn = 0;
     for (const t of b.tray) if (t.frozen) t.frozen--;
     const debt = b._trayDebt || 0;
     b._trayDebt = 0;
     const hold = b.traySize;
-    b.traySize -= debt;         // devoured letters stay missing one turn
+    b.traySize -= debt;
     refillTray(b);
     b.traySize = hold;
   }
@@ -489,6 +603,7 @@
     if (!alive(b).length) {
       b.over = true; b.won = true;
       b.run.hp = b.player.hp; b.run.maxHp = b.player.maxHp;
+      b.sealedNotes.clear();
       say(b, '🏆 The page is yours.');
     } else if (b.player.hp <= 0) {
       b.player.hp = 0; b.over = true; b.won = false;
@@ -497,66 +612,111 @@
     }
   }
 
-  /* ---------------- the run ---------------- */
-  // Node types: battle ×4 (ramping), camp, elite, boss — a 15-minute spiral.
-  function newRun(seed, meta) {
+  /* ---------------- the run: 3 worlds × 4 stages, branching ---------------- */
+  function newRun(seed, meta, clsId) {
     const rng = makeRng(seed);
-    const bag = Object.assign({}, Morph.LETTER_WEIGHTS);
+    const cls = Weavers.BY_ID[clsId] || Weavers.CLASSES[0];
+    const bag = {};
+    for (const ch in Morph.LETTER_WEIGHTS) bag[ch] = Morph.LETTER_WEIGHTS[ch];
     const run = {
-      rng, meta, seed,
-      hp: PLAYER_HP, maxHp: PLAYER_HP,
-      traySize: TRAY_BASE,
+      rng, meta, seed, cls,
+      hp: cls.hp, maxHp: cls.hp,
+      traySize: cls.tray,
       bag,
-      nodeIdx: 0,
-      nodes: buildNodes(rng),
+      perks: {},
+      flags: {},
+      worldIdx: 0, stageIdx: 0,
+      worlds: buildWorlds(rng, meta),
       over: false, victory: false,
       startNotes: meta.parts.size,
+      startSecrets: meta.secrets.size,
     };
     return run;
   }
 
-  function buildNodes(rng) {
-    return [
-      { type: 'battle', tier: 0 },
-      { type: 'battle', tier: 1 },
-      { type: 'camp' },
-      { type: 'battle', tier: 2 },
-      { type: 'battle', tier: 3 },
-      { type: 'elite', tier: 4 },
-      { type: 'camp' },
-      { type: 'boss', tier: 5 },
-    ];
+  // Each world: 4 stages; stages 1–2 offer a CHOICE of two doors.
+  function buildWorlds(rng, meta) {
+    return Foes.WORLDS.map((w, wi) => {
+      const untaught = LoomEvents.SECRET_EVENTS.filter(ev =>
+        !meta.secrets.has(ev.teaches) && (!ev.deep || wi === 2));
+      const stages = [];
+      stages.push([{ type: 'battle' }]);
+      const eventNode = (untaught.length && rng() < 0.45)
+        ? { type: 'elder', event: pick(rng, untaught) }
+        : { type: 'event' };
+      stages.push(shufflePair(rng, [{ type: 'battle' }, eventNode]));
+      stages.push(shufflePair(rng, [{ type: 'camp' }, { type: 'elite' }]));
+      stages.push([{ type: 'boss' }]);
+      return { def: w, stages };
+    });
+  }
+  function shufflePair(rng, pair) { return rng() < 0.5 ? pair : [pair[1], pair[0]]; }
+
+  function currentStage(run) { return run.worlds[run.worldIdx].stages[run.stageIdx]; }
+  function globalStageIdx(run) { return run.worldIdx * 4 + run.stageIdx; }
+
+  function advance(run) {
+    run.stageIdx++;
+    if (run.stageIdx >= 4) {
+      run.worldIdx++;
+      run.stageIdx = 0;
+      if (run.worldIdx >= run.worlds.length) { run.over = true; run.victory = true; return 'victory'; }
+      run.hp = Math.min(run.maxHp, run.hp + Math.round((run.maxHp - run.hp) * 0.5));
+      return 'world';
+    }
+    return 'stage';
   }
 
   function battleForNode(run, node) {
-    const scale = Foes.SCALE(node.tier);
+    const w = run.worlds[run.worldIdx].def;
+    const scale = Foes.SCALE(globalStageIdx(run));
     let ids;
-    if (node.type === 'boss') ids = ['illiterate'];
-    else if (node.type === 'elite') ids = ['grammarian', { id: pick(run.rng, ['vowelleech', 'pyreimp']), mult: 0.7 }];
-    else ids = [pick(run.rng, Foes.ENCOUNTERS[Math.min(node.tier, 3)])];
+    if (node.type === 'boss') ids = [w.boss];
+    else if (node.type === 'elite') ids = run.worldIdx === 0
+      ? [w.elite]
+      : [w.elite, { id: pick(run.rng, w.normals), mult: 0.6 }];
+    else {
+      ids = [pick(run.rng, w.normals)];
+      if (run.worldIdx >= 1 && run.rng() < 0.3) ids.push({ id: pick(run.rng, w.normals), mult: 0.65 });
+    }
     return createBattle(run, ids, scale);
   }
 
-  /* Rewards after each won battle: pick one of three offers. */
-  function rollRewards(run) {
+  /* ---------------- rewards ---------------- */
+  function missingDeepForms(meta) { return DEEP_FORMS.filter(pid => !meta.parts.has(pid)); }
+  function studyPool(run) {
+    return Morph.VISIBLE.filter(e =>
+      !run.meta.solved.has(e.word) &&
+      e.parts.some(pid => !run.meta.parts.has(pid)) &&
+      !e.parts.some(pid => DEEP_FORMS.includes(pid) && !run.meta.parts.has(pid)));
+  }
+
+  function rollRewards(run, node) {
     const offers = [];
-    // 1) study a word: its parts become grimoire notes, no deduction needed
-    const lens = servableLens(run);
-    const pool = unknownWords(run, lens.concat(lens[lens.length - 1] + 1 <= 10 ? [lens[lens.length - 1] + 1] : []))
-      .filter(e => e.parts.some(pid => !run.meta.parts.has(pid)));
+    const pool = studyPool(run);
     if (pool.length) {
       const w = pick(run.rng, pool);
       const fresh = w.parts.filter(pid => !run.meta.parts.has(pid));
-      offers.push({ kind: 'study', word: w.word,
-        title: `Study ${w.word}`,
-        desc: `${w.name} — ${w.desc}. Inscribes its missing notes: ${fresh.map(pid => Morph.PARTS[pid].title.split(' — ')[0]).join(', ')}.` });
+      offers.push({ kind: 'study', word: w.word, title: `Study ${w.word}`,
+        desc: `${w.name} — ${w.desc}. Inscribes: ${fresh.map(pid => Morph.PARTS[pid].title.split(' — ')[0]).join(', ')}.` });
     }
-    offers.push({ kind: 'mend', title: 'Mend', desc: 'Recover 14 ink (hp).' });
+    offers.push({ kind: 'mend', title: 'Mend', desc: 'Recover 14 ink.' });
     if (run.traySize < 16) offers.push({ kind: 'loom', title: 'Widen the Loom', desc: '+1 tile in your tray, this run.' });
     const el = pick(run.rng, Morph.ELEMENTS);
     offers.push({ kind: 'infuse', el: el.id, title: `Infuse ${el.name}`, desc: `Season your letter bag toward ${el.root}-words (${el.icon}).` });
-    // pick 3 distinct
+    if ((run.perks.ribbon || 0) < 4 && chipMax(run) < 12)
+      offers.push({ kind: 'ribbon', title: 'Ribbon Index', desc: `The loom suggests words one rune longer (now up to ${chipMax(run) + 1}).` });
+    if (!run.perks.quill) offers.push({ kind: 'quill', title: 'Quill of Second Thoughts', desc: 'Once per battle: a second guess in one turn.' });
+    if (!run.perks.whetstone) offers.push({ kind: 'whetstone', title: 'Whetstone', desc: 'Improvised words carry ×0.7 instead of ×0.5.' });
+    offers.push({ kind: 'vial', title: 'Ink Vial', desc: '+6 utmost ink, and mend that much.' });
+
     const out = [];
+    const deep = missingDeepForms(run.meta);
+    if ((node.type === 'elite' || node.type === 'boss') && deep.length) {
+      const pid = deep[0];
+      out.push({ kind: 'formnote', pid, title: Morph.PARTS[pid].title,
+        desc: `${Morph.PARTS[pid].note} Opens its lengths to guessing.`, rare: true });
+    }
     while (out.length < 3 && offers.length) out.push(offers.splice(Math.floor(run.rng() * offers.length), 1)[0]);
     return out;
   }
@@ -576,13 +736,19 @@
         for (const ch of el.root + el.medium + el.large) run.bag[ch] = (run.bag[ch] || 0) + 14;
         return `The bag hums with ${el.name}.`;
       }
+      case 'ribbon': run.perks.ribbon = (run.perks.ribbon || 0) + 1; return 'The index unspools further.';
+      case 'quill': run.perks.quill = true; return 'The quill hums with hindsight.';
+      case 'whetstone': run.perks.whetstone = true; return 'Your improvisations sharpen.';
+      case 'vial': run.maxHp += 6; run.hp = Math.min(run.maxHp, run.hp + 6); return 'Your inkwell deepens.';
+      case 'formnote': run.meta.parts.add(offer.pid); return `${Morph.PARTS[offer.pid].title} — inscribed. New lengths open to you.`;
     }
   }
 
+  /* ---------------- camps & events ---------------- */
   function campChoices(run) {
     return [
       { kind: 'rest', title: 'Rest', desc: 'Recover 40% of your missing ink.' },
-      { kind: 'reflect', title: 'Reflect', desc: 'Puzzle over the margins: one missing note of the grammar reveals itself.' },
+      { kind: 'reflect', title: 'Reflect', desc: 'Puzzle over the margins: one missing note reveals itself (the deep forms keep their own counsel).' },
     ];
   }
   function applyCamp(run, choice) {
@@ -591,21 +757,53 @@
       run.hp += heal;
       return `You rest. +${heal} ink.`;
     }
-    const missing = Morph.PART_IDS.filter(pid => !run.meta.parts.has(pid));
+    const missing = Morph.PART_IDS.filter(pid => !run.meta.parts.has(pid) && !DEEP_FORMS.includes(pid));
     if (!missing.length) { run.hp = Math.min(run.maxHp, run.hp + 8); return 'The grammar is complete — you doze instead (+8).'; }
     const pid = pick(run.rng, missing);
     run.meta.parts.add(pid);
     return `In the quiet it comes to you: ${Morph.PARTS[pid].title} — noted.`;
   }
 
+  function rollEvent(run) { return pick(run.rng, LoomEvents.EVENTS); }
+  function applyEventChoice(run, ev, choice) {
+    const fx = choice.fx || {};
+    const bits = [];
+    if (fx.heal) { run.hp = Math.min(run.maxHp, run.hp + fx.heal); bits.push(`+${fx.heal} ink`); }
+    if (fx.hp) { run.hp = Math.max(1, run.hp + fx.hp); bits.push(`${fx.hp} ink`); }
+    if (fx.tray) { run.traySize += fx.tray; bits.push('the loom widens'); }
+    if (fx.mulligans) { run.perks.mulligans = (run.perks.mulligans || 0) + fx.mulligans; bits.push('+1 sweep per battle'); }
+    if (fx.vowelRich) { for (const v of 'AEIOU') run.bag[v] = Math.round(run.bag[v] * 1.5); bits.push('vowels run rich'); }
+    if (fx.revealNext) { run.flags.revealNext = true; bits.push('a rune will be revealed'); }
+    if (fx.curse === 'longmystery') { run.flags.longmystery = true; bits.push('the next mystery runs long'); }
+    if (fx.note) {
+      for (let i = 0; i < fx.note; i++) {
+        const missing = Morph.PART_IDS.filter(pid => !run.meta.parts.has(pid) && !DEEP_FORMS.includes(pid));
+        if (missing.length) {
+          const pid = pick(run.rng, missing);
+          run.meta.parts.add(pid);
+          bits.push(Morph.PARTS[pid].title);
+        }
+      }
+    }
+    return bits.join(' · ') || 'Nothing changes, which is its own lesson.';
+  }
+
+  // elder events teach hidden grammar; knowledge is permanent and unlisted
+  function applyElder(run, ev) {
+    run.meta.secrets.add(ev.teaches);
+    return true;
+  }
+
   return {
     makeRng, pick,
-    TRAY_BASE, PLAYER_HP, SOLVE_MULT, IMPROV_MULT,
-    createBattle, newRun, buildNodes, battleForNode,
-    guess, canGuess, judge, serveMystery, revealLetter,
+    SOLVE_MULT, IMPROV_MULT, DEEP_FORMS, FREE_FORMS,
+    knowSet, chipMax,
+    createBattle, newRun, buildWorlds, battleForNode, currentStage, globalStageIdx, advance,
+    guess, canGuess, useQuill, judge, serveMystery, chooseLength, guessableLengths, revealLetter,
     castWord, canSpell, tilesFor, spellableWords, mulligan, endTurn,
     targetFoe, alive, describeIntent, foeIntent,
     rollRewards, applyReward, campChoices, applyCamp,
-    refillTray, drawTile, servableLens, unknownWords, inscribeParts,
+    rollEvent, applyEventChoice, applyElder,
+    refillTray, drawTile, inscribeParts, studyPool, missingDeepForms,
   };
 });

@@ -1,6 +1,7 @@
-/* WORDLOOM — lexicon generator & validator.
- *   node wordloom/tools/genwords.js         summary + integrity checks
- *   node wordloom/tools/genwords.js --dump  every word with its meaning
+/* WORDLOOM — lexicon generator & validator (second weaving).
+ *   node tools/genwords.js           summary + integrity checks
+ *   node tools/genwords.js --dump    every visible word with its meaning
+ *   node tools/genwords.js --secrets the hidden grammar too (spoilers)
  */
 const M = require('../js/data/morphology.js');
 
@@ -9,77 +10,91 @@ const check = (name, cond, extra) => {
   if (!cond) { fail++; console.log('  ✗ ' + name + (extra ? ' — ' + extra : '')); }
 };
 
-/* 1. Canonical forms from the design spec must assemble EXACTLY. */
+/* 1. Canonical forms must survive the second weaving EXACTLY. */
 const CANON = {
-  // the specified fire ladder
-  IGNA: [4, 'ign', null], IGNUS: [5, 'ign', null], IGNIUS: [6, 'ign', null],
-  IGNIORA: [7, 'ign', 'ora'], IGNIAROS: [8, 'ign', 'ora'],
-  IGNIORUSA: [9, 'ign', 'ora'], IGNIORARIS: [10, 'ign', 'ora'],
-  // real-word jewels the grammar should produce
-  GELU: [4, 'gel', null], TERRA: [5, 'ter', null], AERO: [4, 'aer', null],
-  AERIS: [5, 'aer', null], AETHIS: [6, 'aer', null], AETHORAIUM: [10, 'aer', 'ora'],
-  AQUA: [4, 'aqu', null], AQUEIS: [6, 'aqu', null],
-  FULGUR: [6, 'ful', null], UMBRIS: [6, 'umb', null],
-  LUMEN: [5, 'lum', null], SANUS: [5, 'san', null],
-  // the Scribe's Elision at work
-  GELAES: [6, 'gel', null],   // GEL+A+AS
-  VENOUX: [6, 'ven', null],   // VEN+O+OX
-  VENOURA: [7, 'ven', 'ora'], // VEN+O+ORA
-  TEREORRAE: [9, 'ter', 'ora'], // TER+E+OR+RA+A → ...RAA → RAE
+  IGNA: ['ign', 'cantrip'], IGNUS: ['ign', 'word'], IGNIUS: ['ign', 'bound'],
+  IGNIORA: ['ign', 'weave'], IGNIAROS: ['ign', 'mirror'],
+  IGNIORUSA: ['ign', 'verse'], IGNIORARIS: ['ign', 'sovereign'],
+  GELU: ['gel', 'cantrip'], TERRA: ['ter', 'word'], AQUA: ['aqu', 'cantrip'],
+  LUMEN: ['lum', 'word'], FULGUR: ['ful', 'bound'], UMBRIS: ['umb', 'bound'],
+  SANUS: ['san', 'word'], AETHORAIUM: ['aer', 'sovereign'],
+  GELAES: ['gel', 'bound'], VENOUX: ['ven', 'bound'], VENOURA: ['ven', 'weave'],
+  TEREORRAE: ['ter', 'verse'],
 };
-for (const [word, [len, el, center]] of Object.entries(CANON)) {
+for (const [word, [el, form]] of Object.entries(CANON)) {
   const e = M.WORDS[word];
-  check(`canon ${word}`, !!e, 'missing from lexicon');
-  if (e) check(`canon ${word} identity`, e.len === len && e.el === el && (e.center || null) === center,
-    JSON.stringify({ len: e.len, el: e.el, center: e.center }));
+  check(`canon ${word}`, !!e && e.el === el && e.form === form && !e.hidden,
+    e ? JSON.stringify({ el: e.el, form: e.form, hidden: e.hidden }) : 'missing');
 }
 
-/* 2. Structural integrity across the whole lexicon. */
+/* 2. Blends: joiner + alt root + first element's suffix, correct lengths. */
+check('Steam union IGNIETUNDUS', !!M.WORDS['IGNIETUNDUS'] && M.WORDS['IGNIETUNDUS'].fx.sig === 'Steam');
+check('unions are 11, grand unions 12',
+  M.VISIBLE.filter(e => e.form === 'union').every(e => e.len === 11) &&
+  M.VISIBLE.filter(e => e.form === 'grandunion').every(e => e.len === 12));
+check('90 visible unions', M.VISIBLE.filter(e => e.form === 'union').length === 90,
+  String(M.VISIBLE.filter(e => e.form === 'union').length));
+check('10 signature pairs resolve both ways', Object.keys(M.SIGNATURES).length === 10 &&
+  M.LIST.filter(e => e.form === 'union' && e.fx.sig).length >= 20);
+
+/* 3. Secrets: hidden from the visible lexicon, present in the full one. */
+check('NIHIL exists and is hidden', !!M.WORDS['NIHIL'] && M.WORDS['NIHIL'].hidden && M.WORDS['NIHIL'].el === 'nih');
+check('CRUOR exists and is hidden', !!M.WORDS['CRUOR'] && M.WORDS['CRUOR'].hidden && M.WORDS['CRUOR'].el === 'cru');
+check('CRUX — the blood cantrip', !!M.WORDS['CRUX'] && M.WORDS['CRUX'].hidden);
+for (const el of M.ELEMENTS) {
+  const elder = M.LIST.find(e => e.el === el.id && e.secretSpelling && e.form === 'word');
+  check(`elder spelling for ${el.root} (${el.secret})`, !!elder && elder.hidden);
+  const base = M.WORDS[M.assemble(el, 'word', null, null)];
+  check(`elder ${el.secret} runs hotter than ${el.root}`,
+    (elder.fx.dmg || elder.fx.heal || 99) > (base.fx.dmg || base.fx.heal || 0));
+  check(`elder parts use sroot:${el.id}`, elder.parts.includes('sroot:' + el.id) && !elder.parts.includes('root:' + el.id));
+}
+check('12 secret ids catalogued', M.SECRET_IDS.length === 12 && M.SECRET_IDS.every(id => M.SECRET_INFO[id]));
+check('no secret ids leak into public notes', M.SECRET_IDS.every(id => !M.PARTS[id]));
+
+/* 4. Structural integrity across the WHOLE lexicon (hidden included). */
 const seen = new Set();
 for (const e of M.LIST) {
   check(`unique ${e.word}`, !seen.has(e.word)); seen.add(e.word);
-  check(`length ${e.word}`, e.word.length === e.len, `${e.word.length} vs ${e.len}`);
-  check(`no identical vowel pairs ${e.word}`, !/AA|EE|II|OO|UU/.test(e.word));
-  check(`no triple letters ${e.word}`, !/(.)\1\1/.test(e.word));
+  check(`length honest ${e.word}`, e.word.length === e.len);
+  check(`no twin vowels ${e.word}`, !/AA|EE|II|OO|UU/.test(e.word));
+  check(`no triples ${e.word}`, !/(.)\1\1/.test(e.word));
   check(`pronounceable ${e.word}`, !/[^AEIOU]{4}/.test(e.word), 'consonant pileup');
   check(`has fx ${e.word}`, e.fx && Object.keys(e.fx).length > 0);
+  check(`has parts ${e.word}`, e.parts.length >= 2);
+  check(`parts known ${e.word}`, e.parts.every(pid => M.PARTS[pid] || M.SECRET_IDS.includes(pid)), e.parts.join(','));
+  if (!e.hidden) check(`visible uses only public notes ${e.word}`, e.parts.every(pid => M.PARTS[pid]));
+  if (e.hidden) check(`hidden requires secret knowledge ${e.word}`, e.parts.some(pid => M.SECRET_IDS.includes(pid)));
 }
 
-/* 2b. Parts integrity: 64 notes, every word decomposes, elision flag honest. */
-check('64 parts in the catalogue', M.PART_IDS.length === 64, String(M.PART_IDS.length));
+/* 5. The notes economy: 81 public notes read every visible word. */
+check('82 public notes', M.PART_IDS.length === 82, String(M.PART_IDS.length));
+const allPublic = new Set(M.PART_IDS);
+check('all public notes read all visible words', M.readableCount(allPublic) === M.VISIBLE.length,
+  M.readableCount(allPublic) + ' vs ' + M.VISIBLE.length);
 const used = new Set();
-for (const e of M.LIST) {
-  check(`parts nonempty ${e.word}`, e.parts.length >= 2);
-  for (const pid of e.parts) { check(`part known ${pid}`, !!M.PARTS[pid]); used.add(pid); }
-  const el = M.EL_BY_ID[e.el];
-  const center = e.center ? M.CENTER_BY_ID[e.center] : null;
-  const raw = M.rawAssemble(el, e.len, center);
-  check(`elision flag ${e.word}`, e.elided === (raw !== e.word), `raw ${raw}`);
-  check(`elision part ${e.word}`, e.parts.includes('rule:elision') === e.elided);
-}
-check('every part is used by some word', M.PART_IDS.every(pid => used.has(pid)),
+for (const e of M.VISIBLE) for (const pid of e.parts) used.add(pid);
+check('every public note is used by some visible word', M.PART_IDS.every(pid => used.has(pid)),
   M.PART_IDS.filter(pid => !used.has(pid)).join(','));
-check('all 64 notes read all 270 words', M.readableCount(new Set(M.PART_IDS)) === 270);
-check('canon IGNIORA parts', JSON.stringify(M.WORDS['IGNIORA'].parts.slice().sort()) ===
-  JSON.stringify(['center:ora', 'conn:ign', 'form:7', 'root:ign']));
+const withSecrets = new Set(M.PART_IDS.concat(M.SECRET_IDS));
+check('secrets unlock the full lexicon', M.LIST.every(e => M.canRead(withSecrets, e)));
 
-/* 3. Counts: 10 elements × (3 short + 4 long forms × 6 centers) = 270. */
-check('lexicon size 270', M.LIST.length === 270, String(M.LIST.length));
-const byLen = {};
-M.LIST.forEach(e => { byLen[e.len] = (byLen[e.len] || 0) + 1; });
-check('10 words per short length', byLen[4] === 10 && byLen[5] === 10 && byLen[6] === 10, JSON.stringify(byLen));
-check('60 words per long length', byLen[7] === 60 && byLen[8] === 60 && byLen[9] === 60 && byLen[10] === 60, JSON.stringify(byLen));
-
-/* 4. Report */
-if (process.argv.includes('--dump')) {
+/* 6. Report */
+const dumpAll = process.argv.includes('--secrets');
+if (process.argv.includes('--dump') || dumpAll) {
+  const list = dumpAll ? M.LIST : M.VISIBLE;
   let cur = '';
-  for (const e of M.LIST) {
-    if (e.el !== cur) { cur = e.el; console.log(`\n=== ${M.EL_BY_ID[e.el].icon} ${M.EL_BY_ID[e.el].name} (${M.EL_BY_ID[e.el].root}) ===`); }
-    console.log(`  ${e.word.padEnd(11)} L${e.len} ${e.name.padEnd(30)} ${e.desc}`);
+  for (const e of list) {
+    const key = e.el + (e.secretSpelling ? '(elder)' : '') + (e.el2 ? '+blend' : '');
+    if (key !== cur) { cur = key; console.log(`\n=== ${M.EL_BY_ID[e.el].icon} ${M.EL_BY_ID[e.el].name}${e.secretSpelling ? ' — ELDER SPELLING' : ''}${e.el2 ? ' — BLENDS' : ''} ===`); }
+    console.log(`  ${e.word.padEnd(13)} L${String(e.len).padEnd(2)} ${e.name.padEnd(34)} ${e.desc}`);
   }
   console.log('\nAlphabet:', M.ALPHABET.join(' '));
-  console.log('Letter weights:', JSON.stringify(M.LETTER_WEIGHTS));
 }
 
-console.log(fail ? `\n${fail} FAILURES` : `OK: ${M.LIST.length} words generated, all integrity checks passed`);
+const lens = {};
+M.VISIBLE.forEach(e => { lens[e.len] = (lens[e.len] || 0) + 1; });
+console.log(fail
+  ? `\n${fail} FAILURES`
+  : `OK: ${M.LIST.length} words woven (${M.VISIBLE.length} visible, ${M.LIST.length - M.VISIBLE.length} hidden) · ${M.PART_IDS.length} notes · lengths ${JSON.stringify(lens)}`);
 process.exit(fail ? 1 : 0);

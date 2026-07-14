@@ -220,3 +220,41 @@ button.quiet { background: none; border-color: transparent; text-decoration: und
 
 .pulse-good { animation: pgood 0.6s; }
 @keyframes pgood { 30% { transform: scale(1.15); filter: drop-shadow(0 0 12px #ffd700);} }
+
+
+/* ---- second weaving: worlds, classes, lengths, elders, overlay ---- */
+.world-banner { text-align: center; font-size: 15px; margin: 4px 0 8px; font-variant: small-caps; letter-spacing: 1px; }
+.node-gap { align-self: center; opacity: 0.4; }
+.offer.door { width: 220px; }
+.offer.risky { border-color: rgba(162,53,44,0.6); background: rgba(162,53,44,0.07); }
+.offer.elder-door { border-color: rgba(123,79,216,0.6); background: rgba(123,79,216,0.08); box-shadow: 0 0 14px rgba(123,79,216,0.25); }
+.offer.rare-offer { border-color: var(--gold); background: rgba(201,162,39,0.12); box-shadow: 0 0 14px rgba(201,162,39,0.3); }
+.offer.weaver { width: 240px; }
+.offer.weaver.locked { opacity: 0.55; filter: grayscale(0.6); cursor: default; }
+
+.len-row { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; margin: 6px 0; }
+.len-pill {
+  min-width: 30px; padding: 3px 6px; border-radius: 12px; font-size: 13.5px; font-weight: bold;
+  border: 1px solid #8a744c; background: rgba(255,250,235,0.55);
+}
+.len-pill.selected { background: linear-gradient(180deg, #5b3fa8, #3a2470); color: #efe6ff; border-color: #8a6fd8; }
+.len-pill.locked { opacity: 0.35; cursor: default; border-style: dashed; }
+
+.mtile.blur { background: repeating-linear-gradient(45deg, #b9ad93, #b9ad93 4px, #a99d84 4px, #a99d84 8px); color: #6a5f49; border-color: #8a744c; }
+
+.elder-wrap { max-width: 620px; margin: 20px auto; padding: 18px; border: 1px solid rgba(123,79,216,0.5);
+  border-radius: 12px; background: rgba(123,79,216,0.06); box-shadow: 0 0 24px rgba(123,79,216,0.2); }
+.elder-text { font-style: italic; line-height: 1.65; margin-top: 12px; font-size: 15.5px; }
+.elder-text b { color: var(--arc); font-size: 18px; letter-spacing: 2px; font-family: 'Courier New', monospace; }
+
+#guide-overlay {
+  position: fixed; inset: 0; z-index: 40; background: rgba(20,15,8,0.65);
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+}
+.guide-inner {
+  background: linear-gradient(160deg, var(--paper) 0%, var(--paper2) 100%);
+  border: 1px solid #5a4a30; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+  max-width: 860px; max-height: 86vh; overflow-y: auto; padding: 18px; width: 100%;
+}
+.note-list.compact { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.note-list.compact .note { font-size: 12.5px; padding: 6px 8px; }

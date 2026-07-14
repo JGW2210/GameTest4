@@ -1,14 +1,35 @@
-/* WORDLOOM — persistence. The grimoire survives every death. */
+/* WORDLOOM — persistence. The grimoire survives every death.
+ * v2: notes + secret knowledge + solved words; migrates v1 saves
+ * (numbered form ids become named forms). */
 (function () {
-  const KEY = 'wordloom-meta-v1';
+  const KEY = 'wordloom-meta-v2';
+  const OLD_KEY = 'wordloom-meta-v1';
+  const FORM_MIGRATE = {
+    'form:4': 'form:cantrip', 'form:5': 'form:word', 'form:6': 'form:bound',
+    'form:7': 'form:weave', 'form:8': 'form:mirror', 'form:9': 'form:verse',
+    'form:10': 'form:sovereign',
+  };
 
   function load() {
     try {
-      const raw = localStorage.getItem(KEY);
-      if (!raw) return fresh();
+      let raw = localStorage.getItem(KEY);
+      if (!raw) {
+        const old = localStorage.getItem(OLD_KEY);
+        if (old) {
+          const d = JSON.parse(old);
+          const meta = fresh();
+          for (const pid of (d.parts || [])) meta.parts.add(FORM_MIGRATE[pid] || pid);
+          for (const w of (d.solved || [])) meta.solved.add(w);
+          meta.runs = d.runs || 0; meta.wins = d.wins || 0; meta.bestNode = d.bestNode || 0;
+          save(meta);
+          return meta;
+        }
+        return fresh();
+      }
       const d = JSON.parse(raw);
       return {
         parts: new Set(d.parts || []),
+        secrets: new Set(d.secrets || []),
         solved: new Set(d.solved || []),
         runs: d.runs || 0,
         wins: d.wins || 0,
@@ -17,11 +38,12 @@
     } catch (e) { return fresh(); }
   }
 
-  // Every grimoire begins with the first stitches: the notes that read
-  // IGNA (a spark) and SANA (a salve).
+  // Every grimoire begins with the notes that read IGNA (a spark) and
+  // SANA (a salve).
   function fresh() {
     return {
-      parts: new Set(['root:ign', 'suf:ign:small', 'root:san', 'suf:san:small', 'form:4']),
+      parts: new Set(['root:ign', 'suf:ign:small', 'root:san', 'suf:san:small', 'form:cantrip']),
+      secrets: new Set(),
       solved: new Set(['IGNA', 'SANA']),
       runs: 0, wins: 0, bestNode: 0,
     };
@@ -31,13 +53,14 @@
     try {
       localStorage.setItem(KEY, JSON.stringify({
         parts: Array.from(meta.parts),
+        secrets: Array.from(meta.secrets),
         solved: Array.from(meta.solved),
         runs: meta.runs, wins: meta.wins, bestNode: meta.bestNode,
       }));
     } catch (e) { /* private mode */ }
   }
 
-  function wipe() { try { localStorage.removeItem(KEY); } catch (e) {} }
+  function wipe() { try { localStorage.removeItem(KEY); localStorage.removeItem(OLD_KEY); } catch (e) {} }
 
   window.LoomSave = { load, save, wipe, fresh };
 })();

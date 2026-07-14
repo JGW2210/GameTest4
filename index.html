@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>WORDLOOM — a Lexicon Arcanum prototype</title>
-<link rel="stylesheet" href="css/loom.css?v=3">
+<link rel="stylesheet" href="css/loom.css?v=4">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪡</text></svg>">
 </head>
 <body>
@@ -36,13 +36,15 @@
   <main id="screen"></main>
 </div>
 <div id="toast"></div>
-<script src="js/data/morphology.js?v=3"></script>
-<script src="js/data/foes.js?v=3"></script>
-<script src="js/engine.js?v=3"></script>
-<script src="js/save.js?v=3"></script>
-<script src="js/main.js?v=3"></script>
+<script src="js/data/morphology.js?v=4"></script>
+<script src="js/data/foes.js?v=4"></script>
+<script src="js/data/classes.js?v=4"></script>
+<script src="js/data/events.js?v=4"></script>
+<script src="js/engine.js?v=4"></script>
+<script src="js/save.js?v=4"></script>
+<script src="js/main.js?v=4"></script>
 <script>
-if (!window.Morph || !window.Loom || !window.LoomSave ||
+if (!window.Morph || !window.Loom || !window.LoomSave || !window.Weavers || !window.LoomEvents ||
     !document.getElementById('screen').dataset.booted) {
   window.__loomFail('Some of the loom\'s files did not load.');
 }
