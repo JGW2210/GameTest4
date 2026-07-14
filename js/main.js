@@ -484,4 +484,5 @@
   }
 
   renderTitle();
+  $screen.dataset.booted = '1'; // boot failsafe in index.html watches for this
 })();
