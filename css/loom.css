@@ -398,3 +398,13 @@ body.gl-on #screen { box-shadow: 0 26px 70px rgba(0,0,0,0.75), inset 0 0 60px rg
   background-size: 240% 100%; animation: chipshimmer 3.4s infinite; pointer-events: none;
 }
 @keyframes chipshimmer { 0% { background-position: 140% 0; } 60%, 100% { background-position: -140% 0; } }
+
+/* ---- the apocrypha: secret notes, once held ---- */
+.note-group.apocrypha h3 { color: var(--arc); border-bottom-color: rgba(123,79,216,0.4); }
+.note.secret-note {
+  border-color: rgba(123,79,216,0.55); background: rgba(123,79,216,0.07);
+  box-shadow: 0 0 10px rgba(123,79,216,0.18);
+}
+.guide .elder { color: var(--arc); font-weight: bold; margin-left: 3px; }
+.guide .apoc-row td { color: #4a3a6b; background: rgba(123,79,216,0.07); }
+.guide .apoc-row .mono { font-weight: bold; }

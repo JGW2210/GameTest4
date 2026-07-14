@@ -533,6 +533,7 @@
   /* the loom guide — same esoteric notes, compact */
   function loomGuide() {
     const P = meta.parts;
+    const S = meta.secrets;
     const suf = (e, sz, txt) => P.has('suf:' + e.id + ':' + sz) ? '-' + txt : '·';
     const g = el('div', 'guide');
     g.innerHTML = `<div class="small" style="margin-bottom:4px"><b>🪡 Loom guide</b> — notes in your grimoire</div>
@@ -541,12 +542,19 @@
         const root = P.has('root:' + e.id);
         const conn = P.has('conn:' + e.id);
         const alt = P.has('alt:' + e.id);
-        return `<tr class="${root ? '' : 'unk'}"><td>${e.icon}</td><td class="mono">${root ? e.root : '???'}</td>
+        const elder = S.has('sroot:' + e.id);
+        return `<tr class="${root ? '' : 'unk'}"><td>${e.icon}</td><td class="mono">${root ? e.root : '???'}${elder ? `<span class="elder" title="the elder spelling — half again as hot">·${e.secret}</span>` : ''}</td>
           <td class="mono">${root ? [suf(e, 'small', e.small), suf(e, 'medium', e.medium), suf(e, 'large', e.large)].join(' ') : '· · ·'}</td>
           <td class="mono">${conn ? (e.longRoot ? '→' + e.longRoot : '+' + e.conn) : '·'}</td>
           <td class="mono">${alt ? '⋯' + e.alt : '·'}</td>
           <td>${root ? e.name : 'unknown'}</td></tr>`;
       }).join('')}
+      ${Morph.SECRET_ELEMENTS.filter(e => S.has('selem:' + e.id)).map(e =>
+        `<tr class="apoc-row"><td>${e.icon}</td><td class="mono">${e.root}</td>
+          <td class="mono">${['-' + e.small, '-' + e.medium, '-' + e.large].join(' ')}</td>
+          <td class="mono">+${e.conn}</td>
+          <td class="mono">⋯${e.alt}</td>
+          <td title="${e.identity}">${e.name}</td></tr>`).join('')}
       </table>
       <div style="margin-top:5px">centers: ${Morph.CENTERS.map(c => P.has('center:' + c.id)
         ? `<span class="mono" title="${c.shape}">${c.seq}</span>` : '<span class="dim">··</span>').join(' ')}</div>
@@ -578,6 +586,18 @@
         });
         sec.appendChild(list);
       } else sec.appendChild(el('div', 'small dim', '— nothing yet —'));
+      inner.appendChild(sec);
+    }
+    // secrets appear only once held; the overlay stays silent otherwise
+    const secretsKnown = Morph.SECRET_IDS.filter(id => meta.secrets.has(id));
+    if (secretsKnown.length) {
+      const sec = el('div', 'note-group apocrypha', `<h3>🕯 Apocrypha <span class="small dim">${secretsKnown.length}/${Morph.SECRET_IDS.length}</span></h3>`);
+      const list = el('div', 'note-list compact');
+      secretsKnown.forEach(id => {
+        const info = Morph.SECRET_INFO[id];
+        list.appendChild(el('div', 'note secret-note', `<span class="note-icon">${info.icon}</span><b>${info.title}</b><div class="small dim">${info.note}</div>`));
+      });
+      sec.appendChild(list);
       inner.appendChild(sec);
     }
     const close = el('button', 'arcane', 'Back to the loom');
@@ -782,6 +802,21 @@
       sec.appendChild(list);
       $screen.appendChild(sec);
     }
+    // the apocrypha: secret knowledge only shows itself once you hold it
+    if (meta.secrets.size) {
+      const known = Morph.SECRET_IDS.filter(id => meta.secrets.has(id));
+      const left = Morph.SECRET_IDS.length - known.length;
+      const sec = el('div', 'note-group apocrypha', `<h3>🕯 Apocrypha <span class="small dim">${known.length}/${Morph.SECRET_IDS.length}</span></h3>`);
+      const list = el('div', 'note-list');
+      known.forEach(id => {
+        const info = Morph.SECRET_INFO[id];
+        list.appendChild(el('div', 'note secret-note',
+          `<span class="note-icon">${info.icon}</span><b>${info.title}</b><div class="small dim">${info.note}</div>`));
+      });
+      sec.appendChild(list);
+      if (left) sec.appendChild(el('div', 'small dim', `…and ${left} page${left > 1 ? 's' : ''} that still deny${left > 1 ? '' : 's'} being written.`));
+      $screen.appendChild(sec);
+    }
     const back = el('button', null, '← Back');
     back.style.marginTop = '14px';
     back.onclick = backTo;
@@ -819,6 +854,13 @@
       Morph.PART_IDS.forEach(pid => meta.parts.add(pid));
       LoomSave.save(meta);
       return `✒️ The whole grammar unfurls — every note inscribes itself. ${Morph.PART_IDS.length}/${Morph.PART_IDS.length}.`;
+    },
+    APOCRYPHA: () => {
+      Morph.SECRET_IDS.forEach(id => meta.secrets.add(id));
+      LoomSave.save(meta);
+      if (window.FX && FX.powerNova) FX.powerNova(window.innerWidth / 2, window.innerHeight / 2.6);
+      return `🕯 The apocrypha unfold — every elder spelling and both unspoken elements, ` +
+        `${Morph.SECRET_IDS.length} secrets inscribed. The grimoire now admits they exist.`;
     },
     RESETTIA: () => {
       const blank = LoomSave.fresh();
