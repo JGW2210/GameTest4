@@ -247,6 +247,9 @@
     const wh = el('button', 'quiet', '🌬 whisper to the loom');
     wh.onclick = renderWhisper;
     row.appendChild(wh);
+    const th = el('button', 'quiet', '🧵 the weaver\'s thread');
+    th.onclick = renderThread;
+    row.appendChild(th);
     if (meta.runs) {
       const wipe = el('button', 'quiet', '⚠ forget everything');
       wipe.onclick = () => { if (confirm('Unlearn every word? This cannot be undone.')) { LoomSave.wipe(); meta = LoomSave.load(); renderTitle(); } };
@@ -921,6 +924,71 @@
       return '🕯 The ink lifts from every page. Only the first stitches remain — 5/' + Morph.PART_IDS.length + '.';
     },
   };
+
+  /* the weaver's thread: progress as a copyable seed. Spin one here,
+   * carry it to any device, and weave it back in on the title page. */
+  function renderThread() {
+    $screen.innerHTML = '';
+    const w = el('div', 'thread-wrap');
+    w.appendChild(el('h2', null, '🧵 The Weaver\'s Thread'));
+    w.appendChild(el('div', 'title-sub',
+      'Your whole grimoire, spun into a single thread.<br>Copy it somewhere safe, or carry it to another loom.'));
+
+    w.appendChild(el('div', 'small', '<b>Your thread</b> — everything you know, as of this moment:'));
+    const mine = el('textarea');
+    mine.readOnly = true;
+    mine.value = Loom.threadEncode(meta);
+    mine.onclick = () => mine.select();
+    w.appendChild(mine);
+    const row1 = el('div', 'thread-row');
+    const copy = el('button', 'arcane', '📋 Copy the thread');
+    copy.onclick = () => {
+      mine.select();
+      const done = () => toast('🧵 Copied. Keep it somewhere it cannot fray.');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(mine.value).then(done, () => { document.execCommand('copy'); done(); });
+      } else { document.execCommand('copy'); done(); }
+    };
+    row1.appendChild(copy);
+    w.appendChild(row1);
+
+    w.appendChild(el('div', 'small', '<br><b>Weave a thread in</b> — knowledge is only ever gained, never lost:'));
+    const paste = el('textarea');
+    paste.placeholder = 'paste a thread here…';
+    w.appendChild(paste);
+    const row2 = el('div', 'thread-row');
+    const weave = el('button', 'arcane', '🪡 Weave it in');
+    weave.onclick = () => {
+      const t = Loom.threadDecode(paste.value);
+      if (!t.ok) {
+        toast(t.error === 'frayed'
+          ? '🕸 The thread is frayed — a character is wrong or missing. Copy it whole and try again.'
+          : '🕸 That is not a weaver\'s thread.', 3200);
+        return;
+      }
+      const gain = Loom.threadMerge(meta, t);
+      LoomSave.save(meta);
+      hud();
+      const bits = [];
+      if (gain.notes) bits.push(`<b>${gain.notes}</b> note${gain.notes > 1 ? 's' : ''}`);
+      if (gain.secrets) bits.push(`<b>${gain.secrets}</b> secret${gain.secrets > 1 ? 's' : ''}`);
+      toast((bits.length
+        ? `🧵 The thread weaves in: ${bits.join(' and ')} join your grimoire.`
+        : '🧵 The thread held nothing you did not already know.')
+        + (t.warn ? '<br><span class="small">It was spun on an older loom — some stitches may sit differently.</span>' : ''), 3600);
+      renderThread();
+    };
+    row2.appendChild(weave);
+    w.appendChild(row2);
+
+    w.appendChild(el('div', 'small dim',
+      '<br>Weaving a thread in <b>merges</b> it with what you hold — notes, secrets, solved words and tallies all keep their best. Nothing is ever unlearned.'));
+    const back = el('button', 'quiet', '← the title page');
+    back.style.cssText = 'display:block;margin:16px auto 0';
+    back.onclick = renderTitle;
+    w.appendChild(back);
+    $screen.appendChild(w);
+  }
 
   function renderWhisper() {
     $screen.innerHTML = '';

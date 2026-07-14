@@ -897,6 +897,155 @@
     return true;
   }
 
+  /* ---------------- the Weaver's Thread: progress as a seed ----------------
+   * Encodes the whole grimoire (notes, secrets, solved words, tallies) as a
+   * copyable code, so progress can be carried to another device from the
+   * title page. Format: version + tallies + grammar fingerprint + three
+   * bitmaps over SORTED id lists, run-length packed, base32 (no ambiguous
+   * letters), sealed with a checksum. */
+  const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  function fnv16(bytes) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193) >>> 0; }
+    return (h ^ (h >>> 16)) & 0xFFFF;
+  }
+  const fnv16str = (s) => fnv16(Array.from(s).map(c => c.charCodeAt(0) & 0xFF));
+  function b32encode(bytes) {
+    let out = '', acc = 0, nbits = 0;
+    for (const b of bytes) {
+      acc = (acc << 8) | b; nbits += 8;
+      while (nbits >= 5) { out += B32[(acc >>> (nbits - 5)) & 31]; nbits -= 5; }
+    }
+    if (nbits) out += B32[(acc << (5 - nbits)) & 31];
+    return out;
+  }
+  function b32decode(str) {
+    const bytes = [];
+    let acc = 0, nbits = 0;
+    for (const ch of str) {
+      const v = B32.indexOf(ch);
+      if (v < 0) return null;
+      acc = (acc << 5) | v; nbits += 5;
+      if (nbits >= 8) { bytes.push((acc >>> (nbits - 8)) & 255); nbits -= 8; }
+    }
+    return bytes;
+  }
+  const RLE_MARK = 0xE7;
+  function rlePack(bytes) {
+    const out = [];
+    let i = 0;
+    while (i < bytes.length) {
+      const b = bytes[i];
+      let n = 1;
+      while (i + n < bytes.length && bytes[i + n] === b && n < 255) n++;
+      if (n >= 4 || b === RLE_MARK) { out.push(RLE_MARK, b, n); i += n; }
+      else { out.push(b); i++; }
+    }
+    return out;
+  }
+  function rleUnpack(bytes) {
+    const out = [];
+    for (let i = 0; i < bytes.length; i++) {
+      if (bytes[i] === RLE_MARK) {
+        const b = bytes[i + 1], n = bytes[i + 2];
+        if (n == null) return null;
+        for (let k = 0; k < n; k++) out.push(b);
+        i += 2;
+      } else out.push(bytes[i]);
+    }
+    return out;
+  }
+  // stable orderings: alphabetical, so the thread survives refactors that
+  // only reorder generation
+  function threadLists() {
+    return {
+      parts: Morph.PART_IDS.slice().sort(),
+      secrets: Morph.SECRET_IDS.slice().sort(),
+      words: Morph.VISIBLE.map(e => e.word).sort(),
+    };
+  }
+  function grammarPrint(L) {
+    return fnv16str(L.parts.join(',') + '|' + L.secrets.join(',') + '|' + L.words.length);
+  }
+  function setToBits(sorted, has) {
+    const bytes = new Array(Math.ceil(sorted.length / 8)).fill(0);
+    sorted.forEach((id, i) => { if (has(id)) bytes[i >> 3] |= 1 << (i & 7); });
+    return bytes;
+  }
+  function push16(arr, n) { arr.push(n & 255, (n >> 8) & 255); }
+  function read16(bytes, i) { return bytes[i] | (bytes[i + 1] << 8); }
+
+  function threadEncode(meta) {
+    const L = threadLists();
+    const raw = [1,
+      meta.runs & 255, (meta.runs >> 8) & 255,
+      meta.wins & 255, (meta.wins >> 8) & 255,
+      Math.min(255, meta.bestNode || 0), Math.min(255, meta.elderDrought || 0)];
+    push16(raw, grammarPrint(L));
+    for (const [sorted, has] of [
+      [L.parts, (id) => meta.parts.has(id)],
+      [L.secrets, (id) => meta.secrets.has(id)],
+      [L.words, (w) => meta.solved.has(w)],
+    ]) {
+      push16(raw, sorted.length);
+      raw.push(...setToBits(sorted, has));
+    }
+    const enc = rlePack(raw);
+    push16(enc, fnv16(enc));
+    const code = b32encode(enc);
+    return code.replace(/(.{6})/g, '$1-').replace(/-$/, '');
+  }
+
+  function threadDecode(str) {
+    const clean = String(str || '').toUpperCase()
+      .replace(/O/g, '0').replace(/[IL]/g, '1').replace(/U/g, 'V')
+      .replace(/[^0-9A-Z]/g, '');
+    if (clean.length < 12) return { ok: false, error: 'short' };
+    const enc = b32decode(clean);
+    if (!enc || enc.length < 4) return { ok: false, error: 'garbled' };
+    const sum = read16(enc, enc.length - 2);
+    const body = enc.slice(0, enc.length - 2);
+    if (fnv16(body) !== sum) return { ok: false, error: 'frayed' };
+    const raw = rleUnpack(body);
+    if (!raw || raw[0] !== 1 || raw.length < 15) return { ok: false, error: 'garbled' };
+    const L = threadLists();
+    const out = {
+      ok: true,
+      runs: read16(raw, 1), wins: read16(raw, 3),
+      bestNode: raw[5], elderDrought: raw[6],
+      warn: read16(raw, 7) !== grammarPrint(L),
+      parts: [], secrets: [], solved: [],
+    };
+    let i = 9;
+    for (const [sorted, bucket] of [[L.parts, out.parts], [L.secrets, out.secrets], [L.words, out.solved]]) {
+      if (i + 2 > raw.length) return { ok: false, error: 'garbled' };
+      const count = read16(raw, i);
+      i += 2;
+      const nBytes = Math.ceil(count / 8);
+      if (i + nBytes > raw.length) return { ok: false, error: 'garbled' };
+      const n = Math.min(count, sorted.length); // tolerate grammar growth/shrink
+      for (let k = 0; k < n; k++) {
+        if (raw[i + (k >> 3)] & (1 << (k & 7))) bucket.push(sorted[k]);
+      }
+      i += nBytes;
+    }
+    return out;
+  }
+
+  /* weave a decoded thread INTO a grimoire — union merge, never a loss */
+  function threadMerge(meta, t) {
+    let fresh = 0;
+    for (const pid of t.parts) if (!meta.parts.has(pid)) { meta.parts.add(pid); fresh++; }
+    let freshSecrets = 0;
+    for (const id of t.secrets) if (!meta.secrets.has(id)) { meta.secrets.add(id); freshSecrets++; }
+    for (const w of t.solved) meta.solved.add(w);
+    meta.runs = Math.max(meta.runs, t.runs);
+    meta.wins = Math.max(meta.wins, t.wins);
+    meta.bestNode = Math.max(meta.bestNode, t.bestNode);
+    meta.elderDrought = Math.min(meta.elderDrought || 0, t.elderDrought);
+    return { notes: fresh, secrets: freshSecrets };
+  }
+
   return {
     makeRng, pick,
     SOLVE_MULT, IMPROV_MULT, DEEP_FORMS, FREE_FORMS,
@@ -908,6 +1057,7 @@
     targetFoe, alive, describeIntent, foeIntent,
     rollRewards, applyReward, campChoices, applyCamp,
     rollEvent, applyEventChoice, applyElder,
+    threadEncode, threadDecode, threadMerge,
     refillTray, drawTile, inscribeParts, studyPool, missingDeepForms,
     drainFx,
   };

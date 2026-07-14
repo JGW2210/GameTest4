@@ -85,6 +85,12 @@ Death loses nothing that matters: **every note makes the next run
 stronger** — and pushes the mystery words longer, up to the 13-rune grand
 Woven Unions.
 
+Progress travels: the title page's **🧵 Weaver's Thread** spins your whole
+grimoire — notes, secrets, solved words, tallies — into one copyable code
+(a progress seed). Paste it into any other device's loom and it **merges**
+in: checksummed against typos, and knowledge is only ever gained, never
+lost.
+
 ## Balance snapshot
 
 `node tools/simulate.js 300` — scripted player on the shipped engine.
