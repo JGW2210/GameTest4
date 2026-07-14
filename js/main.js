@@ -96,6 +96,14 @@
       LoomSave.save(meta);
       return '✒️ The whole grammar unfurls — every note inscribes itself. 64/64.';
     },
+    RESETTIA: () => {
+      // unlearn the grammar: back to the first stitches (chronicle survives)
+      const blank = LoomSave.fresh();
+      meta.parts = blank.parts;
+      meta.solved = blank.solved;
+      LoomSave.save(meta);
+      return '🕯 The ink lifts from every page. Only the first stitches remain — 5/64.';
+    },
   };
 
   function renderWhisper() {
