@@ -54,6 +54,9 @@
     const guide = el('button', 'quiet', '🪡 How the language works');
     guide.onclick = () => renderPrimer();
     row.appendChild(guide);
+    const wh = el('button', 'quiet', '🌬 whisper to the loom');
+    wh.onclick = () => renderWhisper();
+    row.appendChild(wh);
     if (meta.runs) {
       const wipe = el('button', 'quiet', '⚠ forget everything');
       wipe.onclick = () => { if (confirm('Unlearn every word? This cannot be undone.')) { LoomSave.wipe(); meta = LoomSave.load(); renderTitle(); } };
@@ -84,6 +87,55 @@
     back.style.marginTop = '14px';
     back.onclick = renderTitle;
     $screen.appendChild(back);
+  }
+
+  /* Some words are older than the grammar. */
+  const SECRETS = {
+    WORDSMITH: () => {
+      Morph.PART_IDS.forEach(pid => meta.parts.add(pid));
+      LoomSave.save(meta);
+      return '✒️ The whole grammar unfurls — every note inscribes itself. 64/64.';
+    },
+  };
+
+  function renderWhisper() {
+    $screen.innerHTML = '';
+    const w = el('div', 'title-wrap');
+    w.appendChild(el('h2', null, '🌬 Whisper to the Loom'));
+    w.appendChild(el('div', 'title-sub', 'Some words are older than the grammar.<br>Speak one, if you know it.'));
+    const gz = el('div', 'guess-zone');
+    const input = el('input');
+    input.id = 'whisper-input';
+    input.maxLength = 16;
+    input.placeholder = '············';
+    input.autocomplete = 'off';
+    gz.appendChild(input);
+    const speak = el('button', 'arcane', 'Whisper');
+    speak.id = 'whisper-btn';
+    speak.style.marginLeft = '6px';
+    const submit = () => {
+      const word = input.value.toUpperCase().replace(/[^A-Z]/g, '');
+      const secret = SECRETS[word];
+      if (secret) {
+        const msg = secret();
+        hud();
+        toast(msg, 3600);
+        renderTitle();
+      } else {
+        toast('The loom does not stir.');
+        input.value = '';
+      }
+    };
+    speak.onclick = submit;
+    input.onkeydown = (ev) => { if (ev.key === 'Enter') submit(); };
+    gz.appendChild(speak);
+    w.appendChild(gz);
+    const back = el('button', 'quiet', '← the title page');
+    back.style.cssText = 'display:block;margin:16px auto 0';
+    back.onclick = renderTitle;
+    w.appendChild(back);
+    $screen.appendChild(w);
+    input.focus();
   }
 
   function renderGrimoire(backTo) {
