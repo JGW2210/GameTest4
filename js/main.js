@@ -27,6 +27,186 @@
     $toast._t = setTimeout(() => $toast.classList.remove('show'), ms || 2400);
   }
 
+  /* ================= V5 visual layer plumbing ================= */
+  const rnd2 = (a, b) => a + Math.random() * (b - a);
+  function centerOf(elem) {
+    if (!elem) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const r = elem.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  function floatText(x, y, txt, color) {
+    const f = el('div', 'float-txt', txt);
+    f.style.left = (x - 20) + 'px'; f.style.top = (y - 20) + 'px';
+    f.style.color = color || '#fff';
+    document.body.appendChild(f);
+    setTimeout(() => f.remove(), 1200);
+  }
+  function shakeScreen() {
+    const s = $screen;
+    s.classList.remove('shake'); void s.offsetWidth; s.classList.add('shake');
+  }
+  // weave-thread transition between screens (WebGL); instant otherwise
+  function flipScreen(renderFn) {
+    if (window.GLFX && GLFX.weaveTransition(renderFn)) return;
+    renderFn();
+  }
+
+  /* per-element particle palettes for the loom-tongue */
+  const ELEM_FX = {
+    ign: { colors: ['#ff9a3c', '#ff5c2c', '#ffd700'], head: '#ffb347', ink: '#ff7a3c' },
+    gel: { colors: ['#9adcff', '#5ab0ff', '#e8f6ff'], head: '#bfe6ff', ink: '#7ec4ff' },
+    ter: { colors: ['#c9a227', '#8a6a3a', '#e8d9b0'], head: '#d9b96a', ink: '#b08d4a' },
+    aer: { colors: ['#d6fff7', '#8fe8d8', '#ffffff'], head: '#c8f4ea', ink: '#8fe8d8' },
+    ven: { colors: ['#9fce6a', '#4a7a34', '#d6ff9a'], head: '#9fce6a', ink: '#7fbf5f' },
+    ful: { colors: ['#ffe95c', '#a887ff', '#ffffff'], head: '#ffee9a', ink: '#ffd75c' },
+    aqu: { colors: ['#6db6ff', '#2a6fd0', '#bfe0ff'], head: '#8ac4ff', ink: '#6db6ff' },
+    umb: { colors: ['#7b5fd0', '#3a2a66', '#b49aff'], head: '#8a6fd8', ink: '#a887ff' },
+    lum: { colors: ['#fff3b0', '#ffd700', '#ffffff'], head: '#fff3b0', ink: '#ffd700' },
+    san: { colors: ['#7fdf8f', '#3f7d47', '#d6ffda'], head: '#8fe89a', ink: '#5fbf6d' },
+    nih: { colors: ['#b49aff', '#2a2233', '#6a5f8a'], head: '#9a8fc0', ink: '#8a7fb0' },
+    cru: { colors: ['#ff6b5c', '#8c1218', '#ffb3a0'], head: '#ff8a7a', ink: '#e05a4a' },
+  };
+
+  /* play the engine's fx-event queue against the freshly rendered DOM */
+  function playFx(evts) {
+    if (!evts || !evts.length || !window.FX) return;
+    let delay = 0;
+    const later = (fn, add) => { setTimeout(fn, delay); delay += (add == null ? 110 : add); };
+    const foeP = (idx) => centerOf(document.getElementById('foe-art-' + idx) || document.querySelector('.foe-row'));
+    const meP = () => centerOf(document.querySelector('.hpbar.mine') || document.querySelector('.you'));
+    const loomP = () => centerOf(document.querySelector('.spell-build') || document.querySelector('.tray'));
+    const castInBatch = evts.some(ev => ev.type === 'cast');
+    evts.forEach(ev => {
+      switch (ev.type) {
+        case 'cast':
+          later(() => {
+            const pal = ELEM_FX[ev.el] || {};
+            const from = loomP(), to = foeP(battle ? battle.target : 0);
+            const color = ev.how === 'improvised' ? '#9a8fc0' : (pal.ink || '#a887ff');
+            if (FX.wordVolley) {
+              FX.wordVolley(from.x, from.y, to.x, to.y, ev.word, { color });
+              FX.shockwave(from.x, from.y, { color, r: 90 });
+            } else FX.runes(from.x, from.y - 20, ev.word, { color });
+          }, 240);
+          break;
+        case 'foeHit':
+          later(() => {
+            const p = foeP(ev.idx);
+            const pal = ELEM_FX[ev.el];
+            const impact = () => {
+              floatText(p.x + rnd2(-18, 18), p.y - 18,
+                '-' + ev.amount + (ev.rel === 'weak' ? ' !' : ev.rel === 'resist' ? ' ·' : ''),
+                ev.rel === 'weak' ? '#ffd75c' : ev.rel === 'resist' ? '#b7ac97' : '#ff8a5c');
+              const art = document.getElementById('foe-art-' + ev.idx);
+              if (art) { art.classList.remove('hit'); void art.offsetWidth; art.classList.add('hit'); }
+            };
+            if (castInBatch) {
+              // the word volley is already in flight — land the numbers with it
+              setTimeout(impact, 620);
+            } else if (pal && FX.projectile) {
+              const from = loomP();
+              FX.projectile(from.x, from.y, p.x, p.y, pal, impact);
+            } else {
+              FX.slash(p.x, p.y, { color: pal ? pal.head : '#fff' });
+              impact();
+            }
+          }, 150);
+          break;
+        case 'dot':
+          later(() => {
+            const p = foeP(ev.idx);
+            const cols = ev.kind === 'poison' ? ['#9fce6a', '#4a7a34'] : ['#ff9a3c', '#ff5c2c'];
+            FX.burst(p.x, p.y, { count: 12, colors: cols, speed: 3, size: 3 });
+            floatText(p.x, p.y - 12, `-${ev.amount} ${ev.kind === 'poison' ? '☠' : '🔥'}`, cols[0]);
+          }, 160);
+          break;
+        case 'foeDown':
+          later(() => {
+            const p = foeP(ev.idx);
+            if (FX.dissolve) FX.dissolve(p.x, p.y);
+            else FX.burst(p.x, p.y, { count: 30, colors: ['#8a8578', '#3a2c1a', '#c9a227'], speed: 6 });
+            const art = document.getElementById('foe-art-' + ev.idx);
+            if (art) art.classList.add('dissolving');
+          }, 260);
+          break;
+        case 'playerHit':
+          later(() => {
+            const p = meP();
+            if (ev.loss > 0) {
+              floatText(p.x, p.y - 12, '-' + ev.loss, '#ff5c5c');
+              FX.burst(p.x, p.y, { count: 12, colors: ['#a2352c', '#ff8a5c'], speed: 4 });
+              shakeScreen();
+              if (FX.pulse) FX.pulse('#a2352c', Math.min(1, 0.3 + ev.loss / 20));
+            } else FX.shield(p.x, p.y);
+          }, 200);
+          break;
+        case 'block':
+          later(() => { const p = meP(); FX.shield(p.x, p.y); });
+          break;
+        case 'heal':
+          later(() => { const p = meP(); FX.heal(p.x, p.y); floatText(p.x, p.y - 10, '+' + ev.amount, '#5fbf6d'); });
+          break;
+        case 'solved':
+          later(() => {
+            const g = centerOf(document.querySelector('.mystery-panel'));
+            FX.powerNova(g.x, g.y);
+            if (ev.notes) FX.runes(g.x, g.y - 44, '✒✒', { color: '#ffd700', size: 22 });
+          }, 260);
+          break;
+        case 'foeAct':
+          later(() => {
+            const art = document.getElementById('foe-art-' + ev.idx);
+            if (art) { art.classList.remove('acting'); void art.offsetWidth; art.classList.add('acting'); }
+          }, 230);
+          break;
+        case 'victory':
+          later(() => {
+            FX.confetti();
+            if (FX.pulse) FX.pulse('#c9a227', 0.6);
+            if (window.GLBG) GLBG.setMood('victory');
+          }, 300);
+          break;
+        case 'defeat':
+          later(() => {
+            shakeScreen();
+            if (FX.pulse) FX.pulse('#3a0f0a', 0.9);
+            if (window.GLBG) GLBG.setMood('title');
+          }, 300);
+          break;
+      }
+    });
+  }
+
+  /* 3D tilt & sheen on offers/doors toward the cursor (fine pointers) */
+  if (window.matchMedia && matchMedia('(pointer: fine)').matches) {
+    document.addEventListener('pointermove', (e) => {
+      const o = e.target && e.target.closest ? e.target.closest('.offer') : null;
+      if (!o) return;
+      const r = o.getBoundingClientRect();
+      const nx = (e.clientX - r.left) / r.width - 0.5;
+      const ny = (e.clientY - r.top) / r.height - 0.5;
+      o.style.setProperty('--ry', (nx * 10).toFixed(1) + 'deg');
+      o.style.setProperty('--rx', (-ny * 8).toFixed(1) + 'deg');
+      o.style.setProperty('--mx', ((nx + 0.5) * 100).toFixed(1) + '%');
+      o.style.setProperty('--my', ((ny + 0.5) * 100).toFixed(1) + '%');
+    }, { passive: true });
+    document.addEventListener('pointerout', (e) => {
+      const o = e.target && e.target.closest ? e.target.closest('.offer') : null;
+      if (o) { o.style.setProperty('--rx', '0deg'); o.style.setProperty('--ry', '0deg'); }
+    }, { passive: true });
+  }
+
+  /* the needle-and-thread title sigil, drawn on in three passes */
+  const TITLE_SIGIL = `<svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path class="tsig-draw" d="M18 64 C40 30 70 24 96 34 L128 16 L134 22 L104 42 C86 70 48 78 18 64 Z"
+      stroke="#a97e1e" stroke-width="3"/>
+    <path class="tsig-draw d2" d="M128 16 L134 22 M124 24 L129 28"
+      stroke="#6b5326" stroke-width="2.4"/>
+    <path class="tsig-draw d3" d="M18 64 C10 70 8 78 14 84 C26 88 34 80 30 70 M30 70 C48 62 66 58 84 60 C102 62 118 58 130 48"
+      stroke="#7b4fd8" stroke-width="2.2"/>
+    <circle class="tsig-gem" cx="130" cy="19" r="3.4" fill="#7b4fd8" stroke="#a97e1e" stroke-width="1.2"/>
+  </svg>`;
+
   function hud() {
     const notes = meta.parts.size;
     const readable = Morph.readableCount(Loom.knowSet(meta));
@@ -39,8 +219,10 @@
   function renderTitle() {
     run = null; battle = null;
     hud();
+    if (window.GLBG) GLBG.setMood('title');
     $screen.innerHTML = '';
     const w = el('div', 'title-wrap');
+    w.appendChild(el('div', 'title-sigil', TITLE_SIGIL));
     w.appendChild(el('h1', null, 'WORDLOOM'));
     w.appendChild(el('div', 'title-sub', 'Deduce the words you do not know. Spell the words you do.<br>Everything you learn is yours forever.'));
     w.appendChild(el('div', 'ladder', 'IGNA · IGNUS · IGNIUS · IGNIORA · IGNIAROS · IGNIORUSA · IGNIORARIS · <b>IGNIETUNDUS</b>'));
@@ -132,6 +314,7 @@
     if (run.over) { endRun(run.victory); return; }
     const stage = Loom.currentStage(run);
     const w = run.worlds[run.worldIdx].def;
+    if (window.GLBG) { GLBG.setMood('map'); GLBG.setWorld(w.id || w.name); }
     $screen.innerHTML = runStrip() + worldBanner();
     if (isFirst === 'world') {
       $screen.innerHTML += `<p class="small center" style="color:var(--good)">You cross into ${w.name} — the crossing mends half your missing ink.</p>`;
@@ -152,13 +335,21 @@
   }
 
   function enterNode(node) {
-    if (node.type === 'camp') { renderCamp(); return; }
-    if (node.type === 'event') { renderEvent(); return; }
-    if (node.type === 'elder') { renderElder(node.event); return; }
+    if (node.type === 'camp') { flipScreen(renderCamp); return; }
+    if (node.type === 'event') { flipScreen(renderEvent); return; }
+    if (node.type === 'elder') { flipScreen(() => renderElder(node.event)); return; }
     battle = Loom.battleForNode(run, node);
     battle._node = node;
     picked = [];
-    renderBattle();
+    if (window.GLBG) GLBG.setMood('battle');
+    flipScreen(() => {
+      renderBattle();
+      // the foes materialize from swirling ink
+      document.querySelectorAll('.foe .art').forEach((art, i) => {
+        art.classList.add('spawn');
+        if (FX.inkSwirl) setTimeout(() => { const p = centerOf(art); FX.inkSwirl(p.x, p.y); }, i * 120);
+      });
+    });
   }
 
   /* ================= battle ================= */
@@ -208,7 +399,13 @@
     const trayEl = el('div', 'tray');
     b.tray.forEach(t => {
       const tile = el('div', 'tile' + ('AEIOU'.includes(t.ch) ? ' vowel' : '') + (t.frozen ? ' frozen' : '') + (picked.includes(t.id) ? ' used' : ''), t.ch);
-      if (!t.frozen) tile.onclick = () => { if (!picked.includes(t.id)) { picked.push(t.id); refreshBuild(); } };
+      if (!t.frozen) tile.onclick = () => {
+        if (!picked.includes(t.id)) {
+          picked.push(t.id);
+          tile.classList.remove('pop'); void tile.offsetWidth; tile.classList.add('pop');
+          refreshBuild();
+        }
+      };
       tile.dataset.id = t.id;
       trayEl.appendChild(tile);
     });
@@ -290,11 +487,18 @@
       grid.appendChild(rrow);
     }
     const sm = m.len > 7 ? ' sm' : '';
-    m.guesses.forEach(g => {
+    // freshly-spoken guesses ripple in with a staggered flip
+    const prevShown = b._shownGuesses == null ? m.guesses.length : b._shownGuesses;
+    m.guesses.forEach((g, gi) => {
       const row = el('div', 'mrow');
-      for (let i = 0; i < m.len; i++) row.appendChild(el('div', 'mtile' + sm + ' ' + g.marks[i], g.word[i]));
+      for (let i = 0; i < m.len; i++) {
+        const t = el('div', 'mtile' + sm + ' ' + g.marks[i], g.word[i]);
+        if (gi >= prevShown) { t.classList.add('flip'); t.style.animationDelay = (i * 70) + 'ms'; }
+        row.appendChild(t);
+      }
       grid.appendChild(row);
     });
+    b._shownGuesses = m.guesses.length;
     pane.appendChild(grid);
 
     const gz = el('div', 'guess-zone');
@@ -445,12 +649,10 @@
   function afterAction() {
     const b = battle;
     LoomSave.save(meta);
-    if (b.over) {
-      renderBattle();
-      setTimeout(() => b.won ? battleWon() : endRun(false), 900);
-      return;
-    }
+    const evts = Loom.drainFx ? Loom.drainFx(b) : [];
     renderBattle();
+    playFx(evts);
+    if (b.over) setTimeout(() => b.won ? battleWon() : endRun(false), 1400);
   }
 
   function scrollLog() {
@@ -464,6 +666,10 @@
     meta.bestNode = Math.max(meta.bestNode, Loom.globalStageIdx(run) + 1);
     LoomSave.save(meta);
     const notes = b.stats.notes;
+    flipScreen(() => battleWonScreen(b, notes));
+  }
+
+  function battleWonScreen(b, notes) {
     $screen.innerHTML = runStrip() + worldBanner() + `
       <h2 class="center">🏆 The page is yours</h2>
       <p class="small center">${notes.length
@@ -490,7 +696,7 @@
     const what = Loom.advance(run);
     battle = null;
     if (what === 'victory') { endRun(true); return; }
-    renderStageChoice(what === 'world' ? 'world' : false);
+    flipScreen(() => renderStageChoice(what === 'world' ? 'world' : false));
   }
 
   function renderCamp() {
@@ -668,6 +874,8 @@
   function endRun(victory) {
     if (victory) { meta.wins++; }
     LoomSave.save(meta);
+    if (window.GLBG) GLBG.setMood(victory ? 'victory' : 'title');
+    if (victory && window.FX && FX.confetti) FX.confetti();
     const gained = meta.parts.size - run.startNotes;
     const secretsGained = meta.secrets.size - run.startSecrets;
     const readable = Morph.readableCount(Loom.knowSet(meta));
@@ -699,7 +907,12 @@
     const ch = ev.key.toUpperCase();
     if (/^[A-Z]$/.test(ch)) {
       const t = battle.tray.find(x => x.ch === ch && !x.frozen && !picked.includes(x.id));
-      if (t) { picked.push(t.id); refreshBuild(); }
+      if (t) {
+        picked.push(t.id);
+        const tileEl = document.querySelector(`.tile[data-id="${t.id}"]`);
+        if (tileEl) { tileEl.classList.remove('pop'); void tileEl.offsetWidth; tileEl.classList.add('pop'); }
+        refreshBuild();
+      }
     } else if (ev.key === 'Backspace') { picked.pop(); refreshBuild(); }
     else if (ev.key === 'Enter') castBuilt();
   });

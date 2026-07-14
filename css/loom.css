@@ -258,3 +258,143 @@ button.quiet { background: none; border-color: transparent; text-decoration: und
 }
 .note-list.compact { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 .note-list.compact .note { font-size: 12.5px; padding: 6px 8px; }
+
+/* ============================================================
+ * V5: the three.js visual overhaul — GL layers, tilt & sheen,
+ * living foes, tile & guess juice, title sigil, screen pulses.
+ * ============================================================ */
+
+/* ---- GL layers ---- */
+#gl-bg { position: fixed; inset: 0; pointer-events: none; z-index: -1; }
+#gl-fx, #fx-2d { position: fixed; inset: 0; pointer-events: none; z-index: 39; }
+/* standing soft vignette so the candlelight pools in the middle */
+body.gl-on::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 38;
+  box-shadow: inset 0 0 max(12vw, 120px) rgba(8, 4, 0, 0.5);
+}
+#gl-pulse { position: fixed; inset: 0; pointer-events: none; z-index: 48; opacity: 0; }
+body.gl-on #screen { box-shadow: 0 26px 70px rgba(0,0,0,0.75), inset 0 0 60px rgba(90,70,40,0.18); }
+
+/* ---- floating combat text & screen shake ---- */
+.float-txt {
+  position: fixed; z-index: 49; pointer-events: none;
+  font-weight: bold; font-size: 24px; text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  animation: floatup 1.15s ease-out forwards;
+}
+@keyframes floatup {
+  0% { transform: translateY(0) scale(0.7); opacity: 0; }
+  15% { opacity: 1; transform: translateY(-10px) scale(1.15); }
+  100% { transform: translateY(-72px) scale(1); opacity: 0; }
+}
+#screen.shake { animation: scrshake 0.4s; }
+@keyframes scrshake {
+  20% { transform: translateX(-9px) rotate(-0.3deg); }
+  40% { transform: translateX(8px) rotate(0.3deg); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(4px); }
+}
+
+/* ---- 3D tilt & sheen on offers/doors (fine pointers) ---- */
+.offer { --rx: 0deg; --ry: 0deg; --mx: 50%; --my: 20%; position: relative; overflow: hidden; }
+.offer::after {
+  content: ''; position: absolute; inset: 0; border-radius: 10px; pointer-events: none;
+  opacity: 0; transition: opacity 0.18s;
+  background: radial-gradient(240px circle at var(--mx) var(--my),
+    rgba(255, 250, 220, 0.45), rgba(255, 240, 190, 0.1) 45%, transparent 68%);
+  mix-blend-mode: soft-light;
+}
+@media (pointer: fine) {
+  .offer:hover {
+    transform: translateY(-4px) perspective(650px) rotateX(var(--rx)) rotateY(var(--ry));
+  }
+  .offer:hover::after { opacity: 1; }
+}
+.offer.rare-offer::after {
+  background:
+    radial-gradient(220px circle at var(--mx) var(--my), rgba(255,255,255,0.5), transparent 60%),
+    conic-gradient(from 0deg at var(--mx) var(--my),
+      rgba(255,120,120,0.22), rgba(255,220,120,0.22), rgba(140,255,170,0.22),
+      rgba(130,190,255,0.22), rgba(220,140,255,0.22), rgba(255,120,120,0.22));
+  mix-blend-mode: color-dodge;
+}
+
+/* ---- loom tile & guess juice ---- */
+.tile:active { transform: translateY(1px) scale(0.96); border-bottom-width: 2px; }
+.tile.pop { animation: tilepop 0.18s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes tilepop { 0% { transform: scale(0.82); } 60% { transform: scale(1.14) translateY(-4px); } 100% { transform: scale(1); } }
+.mtile.flip { animation: mflip 0.5s cubic-bezier(0.35, 0.1, 0.3, 1.2) both; }
+@keyframes mflip {
+  0% { transform: rotateX(0); }
+  49% { transform: rotateX(90deg); }
+  100% { transform: rotateX(0); }
+}
+
+/* ---- living foes ---- */
+.foe .art { position: relative; }
+.foe .art > * { display: inline-block; }
+.foe:not(.dead) .art { animation: foe-breathe 3.6s ease-in-out infinite; }
+.foe:nth-child(2):not(.dead) .art { animation-duration: 4.1s; animation-delay: -1.3s; }
+.foe:nth-child(3):not(.dead) .art { animation-duration: 3.2s; animation-delay: -2.1s; }
+@keyframes foe-breathe {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.04, 0.97) translateY(1.5px); }
+}
+.foe .art.acting { animation: foeact 0.5s; }
+@keyframes foeact { 30% { transform: translateY(9px) scale(1.14); } }
+/* ink splatter when a foe is struck */
+.foe .art.hit::after {
+  content: ''; position: absolute; inset: -8%; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='%23a2352c'%3E%3Ccircle cx='50' cy='46' r='15' opacity='0.5'/%3E%3Ccircle cx='28' cy='34' r='5' opacity='0.55'/%3E%3Ccircle cx='72' cy='30' r='4' opacity='0.5'/%3E%3Ccircle cx='76' cy='60' r='6' opacity='0.45'/%3E%3Ccircle cx='24' cy='62' r='4' opacity='0.5'/%3E%3Ccircle cx='60' cy='74' r='3.5' opacity='0.5'/%3E%3Cpath d='M50 46 L38 16 L46 44 Z M50 46 L82 42 L54 50 Z M50 46 L30 76 L46 52 Z' opacity='0.4'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 62px 62px; background-repeat: no-repeat; background-position: center;
+  animation: splat 0.45s ease-out forwards;
+}
+@keyframes splat {
+  0% { opacity: 0; transform: scale(0.5); }
+  25% { opacity: 0.9; transform: scale(1.06); }
+  100% { opacity: 0; transform: scale(1.18); }
+}
+/* entrance: materialize from ink */
+.foe .art.spawn { animation: materialize 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+@keyframes materialize {
+  0% { opacity: 0; filter: blur(9px) saturate(0.2) brightness(0.4); transform: scale(0.6) translateY(10px); }
+  60% { opacity: 1; filter: blur(1.5px) saturate(0.7) brightness(0.85); }
+  100% { opacity: 1; filter: none; transform: none; }
+}
+/* death: dissolve into embers (class added imperatively on the kill) */
+.foe .art.dissolving { animation: foe-dissolve 0.9s ease-in both; }
+@keyframes foe-dissolve {
+  0% { opacity: 1; filter: none; transform: none; }
+  100% { opacity: 0.25; filter: blur(4px) grayscale(1) brightness(1.6); transform: scale(0.9) translateY(-8px); }
+}
+
+/* ---- run strip: the current node beckons ---- */
+.node.here::after {
+  content: ''; position: absolute; inset: -6px; border-radius: 50%;
+  border: 1.5px dashed rgba(123,79,216,0.75);
+  animation: node-spin 12s linear infinite;
+}
+@keyframes node-spin { to { transform: rotate(360deg); } }
+
+/* ---- animated title sigil ---- */
+.title-sigil svg { width: 170px; height: 96px; overflow: visible; }
+.title-sigil svg .tsig-draw {
+  stroke-dasharray: 380; stroke-dashoffset: 380;
+  animation: sigil-draw 2s ease-out forwards;
+}
+.title-sigil svg .tsig-draw.d2 { animation-delay: 0.5s; }
+.title-sigil svg .tsig-draw.d3 { animation-delay: 0.9s; }
+@keyframes sigil-draw { to { stroke-dashoffset: 0; } }
+.title-sigil svg .tsig-gem { animation: gem-glow 2.6s ease-in-out infinite 1.7s; opacity: 0.4; }
+@keyframes gem-glow {
+  0%, 100% { opacity: 0.4; filter: drop-shadow(0 0 2px rgba(168,135,255,0.4)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 9px rgba(168,135,255,1)); }
+}
+
+/* cast chips shimmer faintly, inviting the speaking */
+.speakable .cast-chip { position: relative; overflow: hidden; }
+.speakable .cast-chip::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,240,190,0.5) 50%, transparent 70%);
+  background-size: 240% 100%; animation: chipshimmer 3.4s infinite; pointer-events: none;
+}
+@keyframes chipshimmer { 0% { background-position: 140% 0; } 60%, 100% { background-position: -140% 0; } }

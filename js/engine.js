@@ -101,6 +101,7 @@
       guessesThisTurn: 0,
       mystery: null,
       log: [], stats: { casts: 0, improvs: 0, solves: 0, notes: [] },
+      fxq: [],
     };
     refillTray(b);
     const lens = guessableLengths(run);
@@ -119,6 +120,10 @@
     return a[0] || b.foes[0];
   }
   function say(b, msg) { b.log.push(msg); }
+  // visual-effect events: the UI drains these after each action and
+  // plays particles/animations; the engine stays presentation-free.
+  function fxEmit(b, ev) { if (b.fxq) b.fxq.push(ev); }
+  function drainFx(b) { const q = b.fxq || []; b.fxq = []; return q; }
 
   /* ---------------- the mystery word & length choice ---------------- */
   function unsolvedAt(meta, len, formsAllowed) {
@@ -201,6 +206,7 @@
       const fresh = inscribeParts(b.run.meta, entry);
       b.stats.notes.push(...fresh);
       say(b, `🌟 <b>${word}</b> — spoken true!`);
+      fxEmit(b, { type: 'solved', word, notes: fresh.length });
       if (fresh.length) say(b, `✒️ New notes: <b>${fresh.map(pid => Morph.PARTS[pid].title).join(' · ')}</b> — yours forever.`);
       else say(b, '✒️ Its grammar was already yours — the solving was pure craft.');
       castWordFx(b, word, SOLVE_MULT, 'solved');
@@ -289,10 +295,13 @@
     foe.hp -= d;
     const tag = !opts.trueDmg && mult > 1 ? ' — it fears this!' : (!opts.trueDmg && mult < 1 ? ' (resisted)' : '');
     say(b, `⚔ ${foe.icon} ${foe.name} takes <b>${d}</b>${tag}`);
+    fxEmit(b, { type: 'foeHit', idx: b.foes.indexOf(foe), amount: d, el: elId,
+                rel: !opts.trueDmg && mult > 1 ? 'weak' : (!opts.trueDmg && mult < 1 ? 'resist' : '') });
     if (foe.adaptive && elId && foe.hp > 0) { foe.resist = elId; say(b, `🗿 ${foe.name} calcifies against ${Morph.EL_BY_ID[elId].name.toLowerCase()}.`); }
     if (foe.hp <= 0) {
       foe.hp = 0;
       say(b, `✝ ${foe.name} is unwritten.`);
+      fxEmit(b, { type: 'foeDown', idx: b.foes.indexOf(foe) });
       if (b.sealedNotes.size && (foe.boss || foe.elite)) {
         b.sealedNotes.clear();
         say(b, '📖 Your sealed notes breathe open again.');
@@ -313,7 +322,7 @@
 
   function healPlayer(b, n) {
     const amt = Math.min(n, b.player.maxHp - b.player.hp);
-    if (amt > 0) { b.player.hp += amt; say(b, `💚 You mend <b>${amt}</b>.`); }
+    if (amt > 0) { b.player.hp += amt; say(b, `💚 You mend <b>${amt}</b>.`); fxEmit(b, { type: 'heal', amount: amt }); }
   }
 
   function castWordFx(b, word, mult, how) {
@@ -321,7 +330,10 @@
     const el = Morph.EL_BY_ID[entry.el];
     const fx = entry.fx;
     mult *= b.run.cls.power || 1;
-    if (how !== 'bloom') say(b, `${el.icon} <b>${word}</b> — ${entry.name}${mult !== 1 ? ` ×${Math.round(mult * 100) / 100}` : ''}`);
+    if (how !== 'bloom') {
+      say(b, `${el.icon} <b>${word}</b> — ${entry.name}${mult !== 1 ? ` ×${Math.round(mult * 100) / 100}` : ''}`);
+      fxEmit(b, { type: 'cast', word, el: entry.el, how });
+    }
     if (fx.selfCost && how !== 'bloom') {
       b.player.hp -= fx.selfCost;
       say(b, `🩸 The word drinks <b>${fx.selfCost}</b> of your own ink.`);
@@ -381,7 +393,7 @@
       }
     }
     if (fx.drain && dealt > 0) healPlayer(b, Math.round(dealt * fx.drain));
-    if (fx.block) { b.player.block += M(fx.block); say(b, `🛡 Stone rises: +${M(fx.block)}.`); }
+    if (fx.block) { b.player.block += M(fx.block); say(b, `🛡 Stone rises: +${M(fx.block)}.`); fxEmit(b, { type: 'block', amount: M(fx.block) }); }
     if (fx.mirrorBlock) b.player.block += fx.mirrorBlock;
     if (fx.heal) healPlayer(b, M(fx.heal));
     if (fx.maxHp) { b.player.maxHp += fx.maxHp; b.player.hp += fx.maxHp; b.run.maxHp = b.player.maxHp; }
@@ -449,6 +461,7 @@
       const loss = d - absorbed;
       b.player.hp -= loss;
       say(b, loss > 0 ? `💥 ${f.name} hits you for <b>${loss}</b>.` : `🛡 Your stone absorbs ${f.name}'s blow.`);
+      fxEmit(b, { type: 'playerHit', loss, idx: b.foes.indexOf(f) });
       checkEnd(b);
     }
   }
@@ -563,12 +576,13 @@
     for (const f of b.foes) {
       if (b.over) break;
       if (f.hp <= 0) continue;
-      if (f.poison > 0) { f.hp -= f.poison; say(b, `☠ ${f.name} suffers ${f.poison} venom.`); f.poison--; }
+      if (f.poison > 0) { f.hp -= f.poison; say(b, `☠ ${f.name} suffers ${f.poison} venom.`); fxEmit(b, { type: 'dot', idx: b.foes.indexOf(f), kind: 'poison', amount: f.poison }); f.poison--; }
       if (f.hp > 0 && f.burn > 0 && f.burnTurns > 0) {
         f.hp -= f.burn; say(b, `🔥 ${f.name} burns for ${f.burn}.`);
+        fxEmit(b, { type: 'dot', idx: b.foes.indexOf(f), kind: 'burn', amount: f.burn });
         f.burnTurns--; if (!f.burnTurns) f.burn = 0;
       }
-      if (f.hp <= 0) { f.hp = 0; say(b, `✝ ${f.name} is unwritten.`); checkEnd(b); continue; }
+      if (f.hp <= 0) { f.hp = 0; say(b, `✝ ${f.name} is unwritten.`); fxEmit(b, { type: 'foeDown', idx: b.foes.indexOf(f) }); checkEnd(b); continue; }
       if (f.regen && f.hp < f.maxHp) f.hp = Math.min(f.maxHp, f.hp + f.regen);
       if (f.stun > 0) { f.stun--; say(b, `💫 ${f.name} is stunned — it does nothing.`); }
       else {
@@ -578,6 +592,7 @@
           f.patternIdx++;
           say(b, `🤫 ${f.name} opens its mouth — and nothing comes out.`);
         } else {
+          fxEmit(b, { type: 'foeAct', idx: b.foes.indexOf(f) });
           doFoeMove(b, f, m);
           f.patternIdx++;
         }
@@ -605,10 +620,12 @@
       b.run.hp = b.player.hp; b.run.maxHp = b.player.maxHp;
       b.sealedNotes.clear();
       say(b, '🏆 The page is yours.');
+      fxEmit(b, { type: 'victory' });
     } else if (b.player.hp <= 0) {
       b.player.hp = 0; b.over = true; b.won = false;
       b.run.hp = 0;
       say(b, '🕯 Your ink runs dry...');
+      fxEmit(b, { type: 'defeat' });
     }
   }
 
@@ -805,5 +822,6 @@
     rollRewards, applyReward, campChoices, applyCamp,
     rollEvent, applyEventChoice, applyElder,
     refillTray, drawTile, inscribeParts, studyPool, missingDeepForms,
+    drainFx,
   };
 });
