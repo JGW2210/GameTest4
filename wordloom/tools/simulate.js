@@ -9,25 +9,42 @@ const Morph = require('../js/data/morphology.js');
 const RUNS = Number(process.argv[2]) || 300;
 
 function metaWith(rng, n) {
-  const meta = { learned: new Set(['IGNA', 'SANA']), runs: 0, wins: 0, bestNode: 0 };
-  const shortFirst = Morph.LIST.slice().sort((a, z) => a.len - z.len || (rng() - 0.5));
-  for (let i = 0; i < Math.min(n, shortFirst.length); i++) meta.learned.add(shortFirst[i].word);
+  // starter notes + n extra, granted in a study-plausible order:
+  // roots & small suffixes first, then binders/mediums, then centers/forms/larges.
+  const meta = {
+    parts: new Set(['root:ign', 'suf:ign:small', 'root:san', 'suf:san:small', 'form:4']),
+    solved: new Set(['IGNA', 'SANA']),
+    runs: 0, wins: 0, bestNode: 0,
+  };
+  const tierOf = (pid) =>
+    pid.startsWith('root:') ? 0 :
+    pid.includes(':small') ? 1 :
+    pid === 'form:5' || pid.includes(':medium') ? 2 :
+    pid.startsWith('conn:') || pid === 'form:6' || pid === 'rule:elision' ? 3 :
+    pid.startsWith('center:') || pid === 'form:7' ? 4 : 5;
+  const ordered = Morph.PART_IDS.slice().sort((a, z) => tierOf(a) - tierOf(z) || (rng() - 0.5));
+  let added = 0;
+  for (const pid of ordered) {
+    if (added >= n) break;
+    if (!meta.parts.has(pid)) { meta.parts.add(pid); added++; }
+  }
   return meta;
 }
 
-/* solve chance: base skill + info gathered + language knowledge */
+/* solve chance: base skill + info gathered + notes in the grimoire.
+ * Knowing the answer's own parts is worth far more than generic breadth. */
 function trySolve(b, rng, skill) {
   const m = b.mystery;
-  const known = Morph.knownParts(b.run.meta.learned);
+  const P = b.run.meta.parts;
+  const entry = Morph.WORDS[m.answer];
   const gnum = m.guesses.length;
   const revealed = m.revealed.length;
-  // knowing the element roots narrows a 4-5L word massively; centers narrow long words
-  let langBonus = 0;
-  if (m.len <= 6) langBonus = Math.min(0.30, known.els.size * 0.03);
-  else langBonus = Math.min(0.35, known.els.size * 0.02 + known.centers.size * 0.04);
+  const partsKnown = entry.parts.filter(pid => P.has(pid)).length / entry.parts.length;
+  let roots = 0, centers = 0;
+  for (const pid of P) { if (pid.startsWith('root:')) roots++; else if (pid.startsWith('center:')) centers++; }
+  const langBonus = Math.min(0.35, partsKnown * 0.22 + roots * 0.012 + centers * 0.02);
   const p = Math.min(0.75, skill + gnum * 0.09 + revealed * 0.13 + langBonus);
   if (rng() < p) return m.answer;
-  // otherwise a plausible wrong guess: any lexicon word of that length
   const pool = Morph.LIST.filter(e => e.len === m.len && e.word !== m.answer);
   return pool[Math.floor(rng() * pool.length)].word;
 }
@@ -73,33 +90,33 @@ function simulateRun(learned, skill, seed) {
       continue;
     }
     const b = Loom.battleForNode(run, node);
-    if (!playBattle(b, rng, skill)) return { won: false, node: i, learned: meta.learned.size };
+    if (!playBattle(b, rng, skill)) return { won: false, node: i, notes: meta.parts.size };
     // reward policy: study > loom > infuse > mend-if-low
     const offers = Loom.rollRewards(run);
     const rank = (o) => o.kind === 'study' ? 4 : o.kind === 'loom' ? 3 : (o.kind === 'mend' && run.hp < run.maxHp * 0.6) ? 5 : o.kind === 'infuse' ? 2 : 1;
     offers.sort((a, z) => rank(z) - rank(a));
     Loom.applyReward(run, offers[0]);
   }
-  return { won: true, node: run.nodes.length, learned: run.meta.learned.size };
+  return { won: true, node: run.nodes.length, notes: run.meta.parts.size };
 }
 
-function config(label, learned, skill) {
-  let wins = 0, nodeSum = 0, wordsGained = 0;
+function config(label, notes, skill) {
+  let wins = 0, nodeSum = 0, notesGained = 0;
   const deaths = new Array(9).fill(0);
+  const base = 5 + Math.min(notes, 59); // starters + granted
   for (let i = 0; i < RUNS; i++) {
-    const r = simulateRun(learned, skill, 1000 + learned * 31 + i * 13);
+    const r = simulateRun(notes, skill, 1000 + notes * 31 + i * 13);
     if (r.won) wins++; else deaths[r.node]++;
     nodeSum += r.node;
-    wordsGained += r.learned - Math.min(learned, 270);
+    notesGained += r.notes - base;
   }
-  console.log(`${label.padEnd(38)} win ${(100 * wins / RUNS).toFixed(0).padStart(3)}%  reach ${(nodeSum / RUNS).toFixed(1)}/8  +words ${(wordsGained / RUNS).toFixed(1)}  deaths ${deaths.join('/')}`);
+  console.log(`${label.padEnd(38)} win ${(100 * wins / RUNS).toFixed(0).padStart(3)}%  reach ${(nodeSum / RUNS).toFixed(1)}/8  +notes ${(notesGained / RUNS).toFixed(1)}  deaths ${deaths.join('/')}`);
 }
 
-console.log(`\n=== WORDLOOM balance (${RUNS} runs/config) — 8-node spiral ===\n`);
-config('fresh grimoire, novice (skill .04)', 0, 0.04);
-config('fresh grimoire, sharp  (skill .10)', 0, 0.10);
-config('12 words, novice', 12, 0.04);
-config('30 words, sharp', 30, 0.10);
-config('60 words, sharp', 60, 0.10);
-config('120 words, sharp', 120, 0.10);
-config('full 270, sharp', 270, 0.10);
+console.log(`\n=== WORDLOOM balance (${RUNS} runs/config) — 8-node spiral, 64-note grammar ===\n`);
+config('fresh grimoire (5 notes), novice', 0, 0.04);
+config('fresh grimoire (5 notes), sharp', 0, 0.10);
+config('12 extra notes, novice', 12, 0.04);
+config('20 extra notes, sharp', 20, 0.10);
+config('35 extra notes, sharp', 35, 0.10);
+config('full grammar (64), sharp', 59, 0.10);

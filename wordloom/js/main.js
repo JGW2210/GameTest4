@@ -27,10 +27,11 @@
   }
 
   function hud() {
-    const learned = meta.learned.size;
+    const notes = meta.parts.size;
+    const readable = Morph.readableCount(meta.parts);
     $hud.innerHTML = run
-      ? `<span>🖋 ink <b>${run.hp}/${run.maxHp}</b></span><span>📖 grimoire <b>${learned}</b>/270</span><span>🪡 loom <b>${run.traySize}</b></span>`
-      : `<span>📖 grimoire <b>${learned}</b>/270 words</span><span>🏆 wins <b>${meta.wins}</b>/${meta.runs} runs</span>`;
+      ? `<span>🖋 ink <b>${run.hp}/${run.maxHp}</b></span><span>✒️ notes <b>${notes}</b>/64</span><span title="words your notes can read">📖 reads <b>${readable}</b>/270</span><span>🪡 loom <b>${run.traySize}</b></span>`
+      : `<span>✒️ notes <b>${notes}</b>/64</span><span title="words your notes can read">📖 reads <b>${readable}</b>/270 words</span><span>🏆 wins <b>${meta.wins}</b>/${meta.runs} runs</span>`;
   }
 
   /* ================= title ================= */
@@ -47,11 +48,9 @@
     w.appendChild(start);
     const row = el('div', null, '');
     row.style.marginTop = '16px';
-    if (meta.learned.size) {
-      const g = el('button', 'quiet', '📖 Open the grimoire');
-      g.onclick = () => renderGrimoire(renderTitle);
-      row.appendChild(g);
-    }
+    const g = el('button', 'quiet', '📖 Open the grimoire');
+    g.onclick = () => renderGrimoire(renderTitle);
+    row.appendChild(g);
     const guide = el('button', 'quiet', '🪡 How the language works');
     guide.onclick = () => renderPrimer();
     row.appendChild(guide);
@@ -78,8 +77,9 @@
       ${Morph.CENTERS.map(c => `<span class="mono">${c.seq}</span> ${c.name}`).join(' · ')}.</p>
       <p class="small" style="margin-top:6px"><b>The Scribe's Elision:</b> twin vowels never touch — the second transmutes (A→E, E→A, I→E, O→U, U→O).
       So GEL+A+AS is written <span class="mono">GELAES</span>, and VEN+O+ORA becomes <span class="mono">VENOURA</span>.</p>
-      <p class="small dim" style="margin-top:6px">You may speak any grammatical word — but uninscribed words carry half their strength.
-      Only deduction (or study) inscribes a word forever.</p>`;
+      <p class="small dim" style="margin-top:6px">Your grimoire records <b>notes</b> — the rules and parts above — not words.
+      A word casts at full strength once every part it uses is in your notes; otherwise it can still be improvised at half power.
+      Solving a mystery word inscribes its parts forever. 64 notes read all 270 words.</p>`;
     const back = el('button', null, '← Back');
     back.style.marginTop = '14px';
     back.onclick = renderTitle;
@@ -87,16 +87,28 @@
   }
 
   function renderGrimoire(backTo) {
-    $screen.innerHTML = `<h2>📖 The Grimoire — ${meta.learned.size}/270</h2>`;
-    const list = el('div', 'grimoire-list');
-    const words = Array.from(meta.learned).map(w => Morph.WORDS[w]).filter(Boolean)
-      .sort((a, z) => a.el.localeCompare(z.el) || a.len - z.len);
-    let cur = '';
-    for (const e of words) {
-      if (e.el !== cur) { cur = e.el; list.appendChild(el('div', null, `<b>${Morph.EL_BY_ID[e.el].icon} ${Morph.EL_BY_ID[e.el].name}</b>`)); }
-      list.appendChild(el('div', null, `${e.word} <span class="dim">· ${e.desc}</span>`));
+    const readable = Morph.readableCount(meta.parts);
+    $screen.innerHTML = `<h2>📖 The Grimoire — ${meta.parts.size}/64 notes</h2>
+      <p class="small dim">You do not collect words — you collect the grammar. These notes currently read <b>${readable}/270</b> words of the loom-tongue.</p>`;
+    const GROUPS = [
+      ['roots', '🌳 Roots'], ['suffixes', '✂️ Suffixes'], ['binders', '🧵 Binders'],
+      ['centers', '🌀 Centers'], ['forms', '𝔏 Forms'], ['rules', '✒️ Rules'],
+    ];
+    for (const [gid, gname] of GROUPS) {
+      const all = Morph.PART_IDS.filter(pid => Morph.PARTS[pid].group === gid);
+      const have = all.filter(pid => meta.parts.has(pid));
+      const sec = el('div', 'note-group', `<h3>${gname} <span class="small dim">${have.length}/${all.length}</span></h3>`);
+      const list = el('div', 'note-list');
+      for (const pid of all) {
+        const part = Morph.PARTS[pid];
+        const known = meta.parts.has(pid);
+        list.appendChild(el('div', 'note' + (known ? '' : ' unknown'), known
+          ? `<span class="note-icon">${part.icon}</span><b>${part.title}</b><div class="small dim">${part.note}</div>`
+          : `<span class="note-icon">·</span><b>— an unturned page —</b>`));
+      }
+      sec.appendChild(list);
+      $screen.appendChild(sec);
     }
-    $screen.appendChild(list);
     const back = el('button', null, '← Back');
     back.style.marginTop = '14px';
     back.onclick = backTo;
@@ -234,7 +246,7 @@
     const m = b.mystery;
     const pane = el('div', 'mystery-panel');
     pane.appendChild(el('h2', null, '🕯 The Mystery Word'));
-    pane.appendChild(el('div', 'small', `${m.len} runes · solve it to inscribe it forever <b>and</b> cast it at ×1.5`));
+    pane.appendChild(el('div', 'small', `${m.len} runes · solve it to cast it at ×1.5 <b>and</b> inscribe its grammar in your notes, forever`));
 
     const grid = el('div');
     if (m.revealed.length) {
@@ -277,21 +289,27 @@
     return pane;
   }
 
-  /* the player's morphological knowledge, as a study table */
+  /* the player's grimoire notes, as a study table */
   function loomGuide() {
-    const known = Morph.knownParts(meta.learned);
+    const P = meta.parts;
+    const suf = (e, sz, txt) => P.has('suf:' + e.id + ':' + sz) ? '-' + txt : '·';
     const g = el('div', 'guide');
-    g.innerHTML = `<div class="small" style="margin-bottom:4px"><b>🪡 Loom guide</b> — parts your grimoire has taught you</div>
+    g.innerHTML = `<div class="small" style="margin-bottom:4px"><b>🪡 Loom guide</b> — notes in your grimoire</div>
       <table>
       ${Morph.ELEMENTS.map(e => {
-        const k = known.els.has(e.id);
-        return `<tr class="${k ? '' : 'unk'}"><td>${e.icon}</td><td class="mono">${k ? e.root : '???'}</td>
-          <td class="mono">${k ? '-' + e.small + ' -' + e.medium + ' -' + e.large : '· · ·'}</td>
-          <td>${k ? e.name : 'unknown'}</td></tr>`;
+        const root = P.has('root:' + e.id);
+        const conn = P.has('conn:' + e.id);
+        return `<tr class="${root ? '' : 'unk'}"><td>${e.icon}</td><td class="mono">${root ? e.root : '???'}</td>
+          <td class="mono">${root ? [suf(e, 'small', e.small), suf(e, 'medium', e.medium), suf(e, 'large', e.large)].join(' ') : '· · ·'}</td>
+          <td class="mono">${conn ? (e.longRoot ? '→' + e.longRoot : '+' + e.conn) : '·'}</td>
+          <td>${root ? e.name : 'unknown'}</td></tr>`;
       }).join('')}
       </table>
-      <div style="margin-top:5px">centers: ${Morph.CENTERS.map(c => known.centers.has(c.id)
-        ? `<span class="mono" title="${c.shape}">${c.seq}</span>` : '<span class="dim">···</span>').join(' ')}</div>`;
+      <div style="margin-top:5px">centers: ${Morph.CENTERS.map(c => P.has('center:' + c.id)
+        ? `<span class="mono" title="${c.shape}">${c.seq}</span>` : '<span class="dim">···</span>').join(' ')}
+      · forms: ${[4,5,6,7,8,9,10].map(l => P.has('form:' + l)
+        ? `<span class="mono" title="${Morph.FORM_NAMES[l]}">${l}</span>` : '<span class="dim">·</span>').join(' ')}
+      ${P.has('rule:elision') ? ' · <span class="mono" title="Twin vowels never touch — the second transmutes.">✒️elision</span>' : ''}</div>`;
     return g;
   }
 
@@ -311,12 +329,13 @@
     const castBtn = document.getElementById('cast-btn');
     if (!build) return;
     const entry = Morph.WORDS[word];
-    const inscribed = entry && meta.learned.has(word);
+    const readable = entry && Morph.canRead(meta.parts, entry);
     build.innerHTML = word
-      ? `<span class="${entry ? (inscribed ? 'ok' : 'improv') : 'no'}">${word}</span>`
+      ? `<span class="${entry ? (readable ? 'ok' : 'improv') : 'no'}">${word}</span>`
       : '<span class="no dim">— pick tiles to weave a word —</span>';
     hint.innerHTML = entry
-      ? (inscribed ? `✓ ${entry.name} — ${entry.desc}` : `<span class="improv">valid but uninscribed — improvised at half power</span>`)
+      ? (readable ? `✓ ${entry.name} — ${entry.desc}`
+        : `<span class="improv">its grammar is not in your notes — improvised at half power (${entry.parts.filter(pid => !meta.parts.has(pid)).length} note${entry.parts.filter(pid => !meta.parts.has(pid)).length > 1 ? 's' : ''} missing)</span>`)
       : (word.length >= 3 ? 'not a word of the loom-tongue' : '');
     if (castBtn) castBtn.disabled = !entry;
   }
@@ -342,7 +361,9 @@
       toast(res.reason === 'cursed' ? `The letter ${b.cursedLetter} is inked out.` : 'The loom refuses.');
       return;
     }
-    if (res.correct) toast(`🌟 <b>${g}</b> — inscribed forever!`, 3000);
+    if (res.correct) toast(res.notes && res.notes.length
+      ? `🌟 <b>${g}</b> — ${res.notes.length} new note${res.notes.length > 1 ? 's' : ''} in your grimoire!`
+      : `🌟 <b>${g}</b> — spoken true!`, 3000);
     afterAction();
   }
 
@@ -367,10 +388,12 @@
     const b = battle;
     meta.bestNode = Math.max(meta.bestNode, run.nodeIdx + 1);
     LoomSave.save(meta);
-    const learned = b.stats.learned;
+    const notes = b.stats.notes;
     $screen.innerHTML = runStrip() + `
       <h2 class="center">🏆 The page is yours</h2>
-      <p class="small center">${learned.length ? `Inscribed this battle: <b>${learned.join(', ')}</b> — yours forever, across every run.` : 'No new words this time — the grimoire waits.'}</p>
+      <p class="small center">${notes.length
+        ? `Notes inscribed this battle: <b>${notes.map(pid => Morph.PARTS[pid].title.split(' — ')[0]).join(' · ')}</b> — yours forever, across every run.`
+        : 'No new grammar this time — the grimoire waits.'}</p>
       <p class="small center dim">Choose a spoil:</p>`;
     const offers = Loom.rollRewards(run);
     const row = el('div', 'offers');
@@ -413,13 +436,14 @@
   function endRun(victory) {
     if (victory) { meta.wins++; run.victory = true; }
     LoomSave.save(meta);
-    const gained = meta.learned.size - run.startWords;
+    const gained = meta.parts.size - run.startNotes;
+    const readable = Morph.readableCount(meta.parts);
     $screen.innerHTML = `
       <div class="title-wrap">
         <h1>${victory ? '🏆 THE ILLITERATE IS UNWRITTEN' : '🕯 Your ink runs dry'}</h1>
         <p class="title-sub">${victory ? 'The loom hums your name.' : 'But nothing learned is ever lost.'}</p>
-        <p><b>${gained}</b> new word${gained === 1 ? '' : 's'} inscribed this run · grimoire now holds <b>${meta.learned.size}</b>/270</p>
-        <p class="small dim" style="margin-top:6px">Every word you own makes the next run stronger — and the mystery words longer.</p>
+        <p><b>${gained}</b> new note${gained === 1 ? '' : 's'} inscribed this run · <b>${meta.parts.size}</b>/64 notes, reading <b>${readable}</b>/270 words</p>
+        <p class="small dim" style="margin-top:6px">Every note makes the next run stronger — and the mystery words longer.</p>
       </div>`;
     const again = el('button', 'arcane', '⚔ Weave again');
     again.style.cssText = 'display:block;margin:0 auto;font-size:17px;padding:10px 28px';
@@ -452,8 +476,8 @@
       get run() { return run; },
       get battle() { return battle; },
       get meta() { return meta; },
-      learnAll() { Morph.LIST.forEach(e => meta.learned.add(e.word)); LoomSave.save(meta); hud(); },
-      learnSome(n) { Morph.LIST.slice(0, n).forEach(e => meta.learned.add(e.word)); LoomSave.save(meta); hud(); },
+      learnAll() { Morph.PART_IDS.forEach(pid => meta.parts.add(pid)); LoomSave.save(meta); hud(); },
+      learnSome(n) { Morph.PART_IDS.slice(0, n).forEach(pid => meta.parts.add(pid)); LoomSave.save(meta); hud(); },
       winBattle() { if (battle) { battle.foes.forEach(f => f.hp = 0); battle.over = true; battle.won = true; battleWon(); } },
       rerender() { if (battle) renderBattle(); },
     };

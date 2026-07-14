@@ -102,22 +102,37 @@
   function longRoot(el) { return el.longRoot || (el.root + el.conn); }
   const rev = (s) => s.split('').reverse().join('');
 
-  // Assemble one word. center is null for forms 4–6.
-  function assemble(el, len, center) {
+  // Assemble one word (pre-elision). center is null for forms 4–6.
+  function rawAssemble(el, len, center) {
     const L = longRoot(el);
-    let raw;
     switch (len) {
-      case 4: raw = el.root + el.small; break;
-      case 5: raw = el.root + el.medium; break;
-      case 6: raw = L + el.medium; break;
-      case 7: raw = L + center.seq; break;
-      case 8: raw = L + rev(center.seq) + 'S'; break;
-      case 9: raw = L + center.seq.slice(0, 2) + el.medium + center.seq[2]; break;
-      case 10: raw = L + center.seq + el.large; break;
+      case 4: return el.root + el.small;
+      case 5: return el.root + el.medium;
+      case 6: return L + el.medium;
+      case 7: return L + center.seq;
+      case 8: return L + rev(center.seq) + 'S';
+      case 9: return L + center.seq.slice(0, 2) + el.medium + center.seq[2];
+      case 10: return L + center.seq + el.large;
       default: throw new Error('bad form length ' + len);
     }
-    return sandhi(raw);
   }
+  function assemble(el, len, center) { return sandhi(rawAssemble(el, len, center)); }
+
+  /* ---------------- parts: what the grimoire actually records ----------------
+   * You never inscribe words. You inscribe NOTES — the rules and parts a
+   * solved word teaches. A word can be read (cast at full power) once every
+   * part it is built from is in your grimoire. 64 notes read all 270 words. */
+  const SUFFIX_SIZE_BY_LEN = { 4: 'small', 5: 'medium', 6: 'medium', 9: 'medium', 10: 'large' };
+  function partsOf(el, len, center, elided) {
+    const parts = ['root:' + el.id, 'form:' + len];
+    const sz = SUFFIX_SIZE_BY_LEN[len];
+    if (sz) parts.push('suf:' + el.id + ':' + sz);
+    if (len >= 6) parts.push('conn:' + el.id);
+    if (center) parts.push('center:' + center.id);
+    if (elided) parts.push('rule:elision');
+    return parts;
+  }
+  const canRead = (partsSet, entry) => entry.parts.every(pid => partsSet.has(pid));
 
   /* ---------------- effects ----------------
    * Element decides WHAT the word does; tier (length) decides how hard;
@@ -200,10 +215,12 @@
       }
     }
     function addWord(el, len, center) {
-      const word = assemble(el, len, center);
+      const raw = rawAssemble(el, len, center);
+      const word = sandhi(raw);
       if (word.length !== len) throw new Error(`length drift: ${word} wanted ${len}`);
       if (WORDS[word]) throw new Error(`collision: ${word}`);
       const fx = resolveFx(el, len, center);
+      const elided = word !== raw;
       const entry = {
         word, len, tier: TIER_BY_LEN[len],
         el: el.id, center: center ? center.id : null,
@@ -211,6 +228,8 @@
         name: `${el.name} ${FORM_NAMES[len]}${center ? ' of ' + center.name : ''}`,
         icon: el.icon,
         fx,
+        elided,
+        parts: partsOf(el, len, center, elided),
         desc: describeFx(fx, el),
       };
       WORDS[word] = entry;
@@ -232,24 +251,51 @@
   const LETTER_WEIGHTS = letterWeights();
   const ALPHABET = Object.keys(LETTER_WEIGHTS).sort();
 
-  /* Knowledge helpers: which parts has a player's grimoire taught them? */
-  function knownParts(learnedSet) {
-    const els = new Set(), centers = new Set(), forms = new Set();
-    for (const w of learnedSet) {
-      const e = LEX.WORDS[w];
-      if (!e) continue;
-      els.add(e.el);
-      forms.add(e.len);
-      if (e.center) centers.add(e.center);
+  /* The full catalogue of inscribable notes, with grimoire flavor. */
+  const FORM_NOTES = {
+    4: 'ROOT + small suffix. The smallest utterance an element allows.',
+    5: 'ROOT + medium suffix. A word with its shoulders back.',
+    6: 'ROOT + binder + medium suffix. The binder joins; the word grows.',
+    7: 'ROOT + binder + CENTER. A center woven into the heart of the word.',
+    8: 'ROOT + binder + CENTER reversed, sealed with S. The mirror also wards its speaker.',
+    9: 'ROOT + binder + CENTER, its last vowel migrated to the word\'s end, the medium suffix nested inside — the Verse echoes its inner Word.',
+    10: 'ROOT + binder + CENTER + large suffix. The whole grammar, spoken at once.',
+  };
+  function buildParts() {
+    const PARTS = {};
+    const add = (id, icon, title, note, group) => { PARTS[id] = { id, icon, title, note, group }; };
+    for (const el of ELEMENTS) {
+      add('root:' + el.id, el.icon, `${el.root} — the ${el.name} root`, el.identity, 'roots');
+      add('suf:' + el.id + ':small', el.icon, `-${el.small} — ${el.name}'s small suffix`, `${el.root}${el.small}: its smallest utterance.`, 'suffixes');
+      add('suf:' + el.id + ':medium', el.icon, `-${el.medium} — ${el.name}'s medium suffix`, `${el.root}${el.medium} and every longer form carry it.`, 'suffixes');
+      add('suf:' + el.id + ':large', el.icon, `-${el.large} — ${el.name}'s large suffix`, `Reserved for the ten-rune Sovereigns.`, 'suffixes');
+      add('conn:' + el.id, el.icon, el.longRoot
+        ? `${el.root}→${el.longRoot} — ${el.name}'s irregular binder`
+        : `${el.conn} — ${el.name}'s binder`,
+        el.longRoot
+          ? `In long words the R softens: the root itself becomes ${el.longRoot}.`
+          : `Long ${el.name.toLowerCase()} words bind with ${el.conn}: ${el.root}${el.conn}-.`, 'binders');
     }
-    return { els, centers, forms };
+    for (const c of CENTERS) add('center:' + c.id, c.icon, `${c.seq} — ${c.name}`, c.shape, 'centers');
+    for (const len of [4, 5, 6, 7, 8, 9, 10]) add('form:' + len, '𝔏' + len, `The ${FORM_NAMES[len]} (${len} runes)`, FORM_NOTES[len], 'forms');
+    add('rule:elision', '✒️', "The Scribe's Elision", 'Twin vowels never touch — the second transmutes: A→E, E→A, I→E, O→U, U→O. So GEL+A+AS is written GELAES.', 'rules');
+    return PARTS;
+  }
+  const PARTS = buildParts();
+  const PART_IDS = Object.keys(PARTS);
+
+  function readableCount(partsSet) {
+    let n = 0;
+    for (const e of LEX.LIST) if (canRead(partsSet, e)) n++;
+    return n;
   }
 
   return {
     ELEMENTS, EL_BY_ID, CENTERS, CENTER_BY_ID,
     FORM_NAMES, TIER_BY_LEN, MAG,
-    sandhi, assemble, resolveFx, describeFx, longRoot,
+    sandhi, assemble, rawAssemble, resolveFx, describeFx, longRoot,
     WORDS: LEX.WORDS, LIST: LEX.LIST,
-    ALPHABET, LETTER_WEIGHTS, knownParts,
+    PARTS, PART_IDS, partsOf, canRead, readableCount,
+    ALPHABET, LETTER_WEIGHTS,
   };
 });

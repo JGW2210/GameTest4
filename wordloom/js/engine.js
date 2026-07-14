@@ -1,17 +1,23 @@
 /* ============================================================
  * WORDLOOM — engine (pure logic, browser + Node)
  *
+ * The grimoire records NOTES, not words: solving a mystery word
+ * inscribes the rules and parts it is built from (its root, suffix,
+ * binder, center, form — even the Elision, the first time you catch
+ * it at work). A word can be READ — cast at full power — once every
+ * part it uses is in your grimoire. 64 notes read all 270 words.
+ *
  * The two loops:
  *   ACQUIRE — one free guess per turn at the mystery word (wordle
- *     feedback). Solve it → the word casts at ×1.5 and is inscribed
- *     in your grimoire FOREVER (across runs).
- *   DEPLOY — spell any inscribed word from your loom of letter
+ *     feedback). Solve it → it casts at ×1.5 and its parts are
+ *     inscribed FOREVER (across runs).
+ *   DEPLOY — spell any readable word from your loom of letter
  *     tiles. Tiles are the only cost. Longer words need more (and
  *     rarer) letters: the cost curve IS the spelling.
  *
- * Improvisation: a word that is grammatically valid but not yet
- * inscribed can still be spoken — at half power, and it is NOT
- * learned. Deduction is the only way to truly own a word.
+ * Improvisation: a grammatical word with parts you have not yet
+ * inscribed can still be spoken — at half power. Deduction is the
+ * only way to truly own the grammar.
  * ============================================================ */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -100,7 +106,7 @@
       guessedThisTurn: false,
       mystery: null,
       log: [],
-      stats: { casts: 0, improvs: 0, solves: 0, learned: [] },
+      stats: { casts: 0, improvs: 0, solves: 0, notes: [] },
     };
     refillTray(b);
     serveMystery(b);
@@ -120,24 +126,33 @@
 
   /* ---------------- the mystery word (ACQUIRE loop) ---------------- */
   function unknownWords(run, lens) {
-    return Morph.LIST.filter(e => lens.includes(e.len) && !run.meta.learned.has(e.word));
+    return Morph.LIST.filter(e => lens.includes(e.len) && !run.meta.solved.has(e.word));
   }
 
-  // Serve lengths grow with the player's grimoire: short words first, the
-  // long weaves once the roots are known.
+  // Inscribe every part a word is built from; returns the NEW notes.
+  function inscribeParts(meta, entry) {
+    const fresh = [];
+    for (const pid of entry.parts) {
+      if (!meta.parts.has(pid)) { meta.parts.add(pid); fresh.push(pid); }
+    }
+    return fresh;
+  }
+
+  // Serve lengths grow with the grimoire's notes: short words first, the
+  // long weaves once the grammar starts to open. (64 notes total.)
   function servableLens(run) {
-    const n = run.meta.learned.size;
-    if (n < 6) return [4, 5];
-    if (n < 14) return [4, 5, 6];
-    if (n < 26) return [5, 6, 7];
-    if (n < 45) return [6, 7, 8];
+    const n = run.meta.parts.size;
+    if (n < 10) return [4, 5];
+    if (n < 16) return [4, 5, 6];
+    if (n < 24) return [5, 6, 7];
+    if (n < 36) return [6, 7, 8];
     return [7, 8, 9, 10];
   }
 
   function serveMystery(b) {
     const lens = servableLens(b.run);
     let pool = unknownWords(b.run, lens);
-    if (!pool.length) pool = Morph.LIST.filter(e => !b.run.meta.learned.has(e.word));
+    if (!pool.length) pool = Morph.LIST.filter(e => !b.run.meta.solved.has(e.word));
     if (!pool.length) pool = Morph.LIST; // omniscient player: serve anything
     const e = pick(b.rng, pool);
     b.mystery = { answer: e.word, len: e.len, guesses: [], revealed: [] };
@@ -172,14 +187,21 @@
     const correct = g === m.answer;
     if (correct) {
       const word = m.answer;
-      const newly = !b.run.meta.learned.has(word);
-      b.run.meta.learned.add(word);
+      const entry = Morph.WORDS[word];
+      b.run.meta.solved.add(word);
       b.stats.solves++;
-      if (newly) b.stats.learned.push(word);
-      say(b, `🌟 <b>${word}</b> — spoken true! ${newly ? 'It is inscribed in your grimoire forever.' : ''}`);
+      const fresh = inscribeParts(b.run.meta, entry);
+      b.stats.notes.push(...fresh);
+      say(b, `🌟 <b>${word}</b> — spoken true!`);
+      if (fresh.length) {
+        const titles = fresh.map(pid => Morph.PARTS[pid].title).join(' · ');
+        say(b, `✒️ New notes in your grimoire: <b>${titles}</b> — yours forever.`);
+      } else {
+        say(b, '✒️ Its grammar was already yours — the solving was pure craft.');
+      }
       castWordFx(b, word, SOLVE_MULT, 'solved');
       if (!b.over) serveMystery(b);
-      return { ok: true, correct: true, marks };
+      return { ok: true, correct: true, marks, notes: fresh };
     }
     return { ok: true, correct: false, marks };
   }
@@ -212,10 +234,10 @@
   const canSpell = (b, word) => !!tilesFor(b, word);
 
   function spellableWords(b) {
-    // every inscribed word the current tray can pay for
+    // every READABLE word (all its parts inscribed) the current tray can pay for
     const out = [];
-    for (const w of b.run.meta.learned) {
-      if (Morph.WORDS[w] && canSpell(b, w)) out.push(Morph.WORDS[w]);
+    for (const e of Morph.LIST) {
+      if (Morph.canRead(b.run.meta.parts, e) && canSpell(b, e.word)) out.push(e);
     }
     return out.sort((a, z) => z.len - a.len || (a.word < z.word ? -1 : 1));
   }
@@ -227,16 +249,16 @@
     if (!entry) return { ok: false, reason: 'not-a-word' };
     const tiles = tilesFor(b, word);
     if (!tiles) return { ok: false, reason: 'tiles' };
-    const inscribed = b.run.meta.learned.has(word);
+    const readable = Morph.canRead(b.run.meta.parts, entry);
     // spend the tiles
     for (const t of tiles) b.tray.splice(b.tray.indexOf(t), 1);
-    if (inscribed) { b.stats.casts++; castWordFx(b, word, 1, 'cast'); }
+    if (readable) { b.stats.casts++; castWordFx(b, word, 1, 'cast'); }
     else {
       b.stats.improvs++;
-      say(b, `〰 You improvise <b>${word}</b> — untrained, it carries half its strength.`);
+      say(b, `〰 You improvise <b>${word}</b> — its grammar escapes you, so it carries half its strength.`);
       castWordFx(b, word, IMPROV_MULT, 'improvised');
     }
-    return { ok: true, inscribed };
+    return { ok: true, inscribed: readable };
   }
 
   function elemMult(foe, elId) {
@@ -488,7 +510,7 @@
       nodeIdx: 0,
       nodes: buildNodes(rng),
       over: false, victory: false,
-      startWords: meta.learned.size,
+      startNotes: meta.parts.size,
     };
     return run;
   }
@@ -518,12 +540,16 @@
   /* Rewards after each won battle: pick one of three offers. */
   function rollRewards(run) {
     const offers = [];
-    // 1) study a word: three unknown words revealed, pick teaches it
+    // 1) study a word: its parts become grimoire notes, no deduction needed
     const lens = servableLens(run);
-    const pool = unknownWords(run, lens.concat(lens[lens.length - 1] + 1 <= 10 ? [lens[lens.length - 1] + 1] : []));
+    const pool = unknownWords(run, lens.concat(lens[lens.length - 1] + 1 <= 10 ? [lens[lens.length - 1] + 1] : []))
+      .filter(e => e.parts.some(pid => !run.meta.parts.has(pid)));
     if (pool.length) {
       const w = pick(run.rng, pool);
-      offers.push({ kind: 'study', word: w.word, title: `Study ${w.word}`, desc: `${w.name} — ${w.desc}. Inscribe it now, no deduction needed.` });
+      const fresh = w.parts.filter(pid => !run.meta.parts.has(pid));
+      offers.push({ kind: 'study', word: w.word,
+        title: `Study ${w.word}`,
+        desc: `${w.name} — ${w.desc}. Inscribes its missing notes: ${fresh.map(pid => Morph.PARTS[pid].title.split(' — ')[0]).join(', ')}.` });
     }
     offers.push({ kind: 'mend', title: 'Mend', desc: 'Recover 14 ink (hp).' });
     if (run.traySize < 16) offers.push({ kind: 'loom', title: 'Widen the Loom', desc: '+1 tile in your tray, this run.' });
@@ -537,7 +563,12 @@
 
   function applyReward(run, offer) {
     switch (offer.kind) {
-      case 'study': run.meta.learned.add(offer.word); return `${offer.word} inscribed.`;
+      case 'study': {
+        const entry = Morph.WORDS[offer.word];
+        const fresh = inscribeParts(run.meta, entry);
+        run.meta.solved.add(offer.word);
+        return fresh.length ? `${fresh.length} note${fresh.length > 1 ? 's' : ''} inscribed from ${offer.word}.` : `${offer.word} studied.`;
+      }
       case 'mend': run.hp = Math.min(run.maxHp, run.hp + 14); return 'You mend 14.';
       case 'loom': run.traySize++; return 'Your loom widens.';
       case 'infuse': {
@@ -551,7 +582,7 @@
   function campChoices(run) {
     return [
       { kind: 'rest', title: 'Rest', desc: 'Recover 40% of your missing ink.' },
-      { kind: 'reflect', title: 'Reflect', desc: 'Study one word you saw this run: learn a random unknown word of a length you have already solved.' },
+      { kind: 'reflect', title: 'Reflect', desc: 'Puzzle over the margins: one missing note of the grammar reveals itself.' },
     ];
   }
   function applyCamp(run, choice) {
@@ -560,13 +591,11 @@
       run.hp += heal;
       return `You rest. +${heal} ink.`;
     }
-    const known = Morph.knownParts(run.meta.learned);
-    const lens = known.forms.size ? Array.from(known.forms) : [4, 5];
-    const pool = unknownWords(run, lens);
-    if (!pool.length) { run.hp = Math.min(run.maxHp, run.hp + 8); return 'Nothing new to study — you doze (+8).'; }
-    const w = pick(run.rng, pool);
-    run.meta.learned.add(w.word);
-    return `In the quiet you finally parse it: ${w.word} — inscribed.`;
+    const missing = Morph.PART_IDS.filter(pid => !run.meta.parts.has(pid));
+    if (!missing.length) { run.hp = Math.min(run.maxHp, run.hp + 8); return 'The grammar is complete — you doze instead (+8).'; }
+    const pid = pick(run.rng, missing);
+    run.meta.parts.add(pid);
+    return `In the quiet it comes to you: ${Morph.PARTS[pid].title} — noted.`;
   }
 
   return {
@@ -577,6 +606,6 @@
     castWord, canSpell, tilesFor, spellableWords, mulligan, endTurn,
     targetFoe, alive, describeIntent, foeIntent,
     rollRewards, applyReward, campChoices, applyCamp,
-    refillTray, drawTile, servableLens, unknownWords,
+    refillTray, drawTile, servableLens, unknownWords, inscribeParts,
   };
 });

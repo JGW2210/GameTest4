@@ -197,6 +197,18 @@ button.quiet { background: none; border-color: transparent; text-decoration: und
 @media (max-width: 700px) { .grimoire-list { columns: 2; } }
 .grimoire-list div { break-inside: avoid; padding: 1px 0; }
 
+/* the grimoire of notes */
+.note-group { margin-top: 14px; }
+.note-group h3 { font-variant: small-caps; border-bottom: 1px solid rgba(90,70,40,0.3); padding-bottom: 2px; }
+.note-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin-top: 8px; }
+.note {
+  border: 1px solid #8a744c; border-radius: 8px; padding: 8px 10px;
+  background: rgba(255,250,235,0.5); font-size: 13.5px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+.note .note-icon { float: right; font-size: 17px; }
+.note.unknown { opacity: 0.45; border-style: dashed; background: rgba(58,44,26,0.05); font-style: italic; }
+
 #toast {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(200%);
   background: linear-gradient(180deg, #4a2f7d, #331f5c); color: #efe6ff;

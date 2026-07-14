@@ -34,16 +34,16 @@
     mumbler:   { name: 'The Mumbler',    icon: '🫥', hp: 26, weakTo: 'lum', resist: 'umb',
                  gimmick: 'Inks out a letter — you cannot GUESS with it next turn.',
                  pattern: [CURSE(), A(6), A(5), CURSE()] },
-    boneindex: { name: 'Bone Index',     icon: '💀', hp: 28, weakTo: 'san', resist: 'ter',
+    boneindex: { name: 'Bone Index',     icon: '💀', hp: 32, weakTo: 'san', resist: 'ter',
                  gimmick: 'A dry ledger of the dead. Hits hard, plays fair.',
                  pattern: [A(7), BROOD(1), A(8)] },
     gravemoss: { name: 'Gravemoss',      icon: '🌿', hp: 30, weakTo: 'ign', resist: 'aqu',
                  gimmick: 'Regrows a little each turn.',
                  pattern: [A(5), DEVOUR(1, 3), A(7)], regen: 2 },
-    grammarian:{ name: 'The Grammarian', icon: '🧐', hp: 42, elite: true, weakTo: 'ful', resist: 'lum',
+    grammarian:{ name: 'The Grammarian', icon: '🧐', hp: 50, elite: true, weakTo: 'ful', resist: 'lum',
                  gimmick: 'Corrects you violently. Curses AND freezes.',
                  pattern: [CURSE(), A(7, 2), FREEZE(3), A(9)] },
-    illiterate:{ name: 'THE ILLITERATE', icon: '⬛', hp: 72, boss: true, weakTo: 'lum',
+    illiterate:{ name: 'THE ILLITERATE', icon: '⬛', hp: 88, boss: true, weakTo: 'lum',
                  gimmick: 'Hates all words. Scrambles your loom, devours vowels, cannot read your grimoire — but wants it destroyed.',
                  pattern: [SCRAMBLE(), A(7), DEVOUR(2, 5), A(6, 2), BROOD(2)] },
   };
@@ -59,7 +59,7 @@
     ['illiterate'],                        // boss
   ];
 
-  const SCALE = (idx) => 1 + idx * 0.14;   // hp & damage ramp along the run
+  const SCALE = (idx) => 1 + idx * 0.19;   // hp & damage ramp along the run
 
   return { FOES, ENCOUNTERS, SCALE };
 });

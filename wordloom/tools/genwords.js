@@ -45,6 +45,24 @@ for (const e of M.LIST) {
   check(`has fx ${e.word}`, e.fx && Object.keys(e.fx).length > 0);
 }
 
+/* 2b. Parts integrity: 64 notes, every word decomposes, elision flag honest. */
+check('64 parts in the catalogue', M.PART_IDS.length === 64, String(M.PART_IDS.length));
+const used = new Set();
+for (const e of M.LIST) {
+  check(`parts nonempty ${e.word}`, e.parts.length >= 2);
+  for (const pid of e.parts) { check(`part known ${pid}`, !!M.PARTS[pid]); used.add(pid); }
+  const el = M.EL_BY_ID[e.el];
+  const center = e.center ? M.CENTER_BY_ID[e.center] : null;
+  const raw = M.rawAssemble(el, e.len, center);
+  check(`elision flag ${e.word}`, e.elided === (raw !== e.word), `raw ${raw}`);
+  check(`elision part ${e.word}`, e.parts.includes('rule:elision') === e.elided);
+}
+check('every part is used by some word', M.PART_IDS.every(pid => used.has(pid)),
+  M.PART_IDS.filter(pid => !used.has(pid)).join(','));
+check('all 64 notes read all 270 words', M.readableCount(new Set(M.PART_IDS)) === 270);
+check('canon IGNIORA parts', JSON.stringify(M.WORDS['IGNIORA'].parts.slice().sort()) ===
+  JSON.stringify(['center:ora', 'conn:ign', 'form:7', 'root:ign']));
+
 /* 3. Counts: 10 elements × (3 short + 4 long forms × 6 centers) = 270. */
 check('lexicon size 270', M.LIST.length === 270, String(M.LIST.length));
 const byLen = {};

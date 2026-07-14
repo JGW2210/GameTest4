@@ -116,8 +116,13 @@ centers. 10 elements × 27 = **270 words**.)
 
 - **Deduction becomes linguistics.** A wordle `hit` on position 1–3 usually
   betrays the root; length betrays the form; the remaining letters betray the
-  center. Every word you learn makes every future mystery word easier —
+  center. Every note you earn makes every future mystery word easier —
   *knowledge, not memorization, is the meta-progression.*
+- **The grimoire records notes, not words.** Solving a mystery word inscribes
+  the *parts* it is built from — its root, suffix, binder, center, form rule,
+  even the Elision the first time you catch it at work. A word is **readable**
+  (castable at full power) once every part it uses is in your notes. The
+  entire collection is **64 notes**; together they read all 270 words.
 - **The cost curve is the spelling.** Long words need more (and rarer) tiles
   from the loom. `AQU` words always need a `Q`. Nothing else prices magic.
 - **Improvisation is literacy.** Any grammatical word can be spoken at half

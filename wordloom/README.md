@@ -11,11 +11,16 @@ The original game glued a deckbuilder to a word game. WORDLOOM removes the
 cards entirely — **words are both the puzzle and the arsenal**:
 
 - **ACQUIRE** — every turn you get one free guess at a **mystery word**
-  (wordle feedback: green/gold/grey). Solve it and the word casts at ×1.5
-  and is **inscribed in your grimoire forever — across every run**.
-- **DEPLOY** — spell any inscribed word from your **loom of letter tiles**.
-  Tiles are the only cost. Longer words need more, rarer letters; that IS
-  the mana curve.
+  (wordle feedback: green/gold/grey). Solve it and it casts at ×1.5 — and
+  your grimoire gains **notes**: the rules and parts the word is built from
+  (its root, suffix, binder, center, form), **inscribed forever, across runs**.
+- **DEPLOY** — spell any **readable** word (one whose parts are all in your
+  notes) from your **loom of letter tiles**. Tiles are the only cost. Longer
+  words need more, rarer letters; that IS the mana curve.
+
+You never collect words. You collect the grammar: **64 notes read all 270
+words** — learn `GEL`, `-AS`, and the A-binder from one lucky solve and you
+can suddenly read a dozen frost words you have never seen.
 
 There is no word list. The entire 270-word lexicon is **generated from a
 grammar** — 10 element roots × 3 suffix sizes × 6 center modifiers × 7
@@ -50,10 +55,10 @@ L10 Sovereigns for deep grimoires).
 
 | grimoire | win rate | note |
 |---|---:|---|
-| fresh (2 starter stitches) | 0–3% | reaches node ~3, banks ~11 new words |
-| 12 words | ~13% | |
-| 30 words | ~52% | the elite is the wall |
-| full 270 | ~83% | |
+| fresh (5 starter notes) | 3–12% | banks ~20 notes per death — a third of the grammar |
+| +12 notes | ~19% | |
+| +20 notes | ~41% | the elite is the wall |
+| full 64-note grammar | ~75% | |
 
 ## Layout
 
