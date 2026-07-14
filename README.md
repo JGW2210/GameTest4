@@ -45,11 +45,15 @@ warden, ending at THE ILLITERATE. Mid-world stages offer **two doors**
 (safe camp vs risky elite; battle vs strange event), and rare **elder
 pages** hide on the off-paths, teaching the hidden grammar.
 
-You play a **Weaver**: 🪶 the Scrivener (balanced; the loom suggests words
-to 6 runes), 🔮 the Lector (suggestions at ANY length, cramped tray), or
-⚔️ the Cantor (suggestions only to 5 — but every word at +25%). Suggestions
-are the *index*, not the permission: anything readable can be spelled by
-hand, and the **Ribbon Index** upgrade stretches the suggestions longer.
+You play a **Weaver**: 🪶 the Scrivener (balanced; the loom-sense feels
+words to 6 runes), 🔮 the Lector (sense at ANY length, cramped tray), or
+⚔️ the Cantor (sense only to 5 — but every word at +25%). The loom never
+names a word — it only **senses the length** of the longest word waiting
+in your tray, up to your sense's reach. Every word is spelled by hand,
+and the **Ribbon Index** upgrade stretches the sense one rune further.
+Once per turn you may also **discard up to 5 tiles** for fresh draws,
+and the loom warns you outright when it has gone **stale** (no word
+weavable at all).
 
 You **choose the mystery word's length**. Lengths beyond the basic forms
 unlock through their form notes — and the deep forms (Mirror, Verse,

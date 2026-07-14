@@ -267,7 +267,7 @@
         <b>${c.name}</b>
         <div class="small" style="margin-top:6px">${locked ? '🔒 ' + c.unlockText : c.tagline}</div>
         <div class="small dim" style="margin-top:6px">${locked ? '' : c.desc}</div>
-        <div class="small" style="margin-top:6px">🖋 ${c.hp} · 🪡 ${c.tray} tiles · chips to ${c.chipMax > 12 ? 'ANY' : c.chipMax + 'L'}${c.power !== 1 ? ' · words ×' + c.power : ''}</div>`);
+        <div class="small" style="margin-top:6px">🖋 ${c.hp} · 🪡 ${c.tray} tiles · sense to ${c.chipMax > 12 ? 'ANY' : c.chipMax + 'L'}${c.power !== 1 ? ' · words ×' + c.power : ''}</div>`);
       if (!locked) card.onclick = () => startRun(c.id);
       row.appendChild(card);
     });
@@ -447,10 +447,8 @@
     loom.appendChild(btns);
 
     const speak = el('div', 'speakable');
-    const spellable = Loom.spellableWords(b);
-    const cap = Loom.chipMax(run);
-    // stale loom: not one word of the tongue — readable, improvised, or
-    // beyond the suggestion cap — can be woven from these tiles
+    // stale loom: not one word of the tongue — readable, improvised, at
+    // any length — can be woven from these tiles
     const stale = !b.over && !Loom.anySpellable(b);
     if (stale) {
       const outs = [];
@@ -464,16 +462,18 @@
         b._staleToastTurn = b.turn;
         toast('🕸 The loom is stale — no word can be woven from these tiles.', 3200);
       }
-    } else if (spellable.length) {
-      speak.appendChild(el('div', 'small dim', `the loom suggests (to ${cap > 12 ? 'any length' : cap + ' runes'} — longer words must be spelled by hand):`));
-      spellable.forEach(e => {
-        const c = el('button', 'cast-chip', `${Morph.EL_BY_ID[e.el].icon} ${e.word}`);
-        c.title = `${e.name} — ${e.desc}`;
-        c.onclick = () => { const r = Loom.castWord(b, e.word); if (r.ok) { picked = []; afterAction(); } };
-        speak.appendChild(c);
-      });
-    } else {
-      speak.appendChild(el('div', 'small dim', 'no suggestion fits this loom — deduce, improvise, spell by hand, discard, or sweep'));
+    } else if (!b.over) {
+      // the loom-sense: it feels the length of what waits, never the word
+      const s = Loom.loomSense(b);
+      if (s.best) {
+        speak.appendChild(el('div', 'sense-note',
+          `🪡 The loom senses a word of <b>${s.best} runes</b> waiting in these tiles` +
+          `${s.beyond ? ' — and something longer still, beyond its reach' : ''}.` +
+          ` <span class="dim">(your sense feels ${s.cap >= 12 ? 'any length' : 'to ' + s.cap + ' runes'})</span>`));
+      } else {
+        speak.appendChild(el('div', 'sense-note faint',
+          `🪡 The loom senses nothing within ${s.cap} runes — yet something longer stirs in these tiles.`));
+      }
     }
     loom.appendChild(speak);
     left.appendChild(loom);
@@ -873,7 +873,8 @@
       <b>The Easing Vowel:</b> when a binder's consonant strikes another consonant, the element's small vowel eases the joint.</p>
       <p class="small dim" style="margin-top:6px">Your grimoire records <b>notes</b> — these rules and parts — not words.
       A word casts at full strength once every part it uses is in your notes; otherwise it can be improvised at half power.
-      The loom only <b>suggests</b> short words (your Weaver decides how short) — long words must be spelled by hand.
+      The loom never points at words: it only <b>senses</b> the length of the longest word waiting in your tiles
+      (your Weaver decides how far that sense reaches, and the Ribbon Index stretches it). Every word is spelled by hand.
       Deep lengths must be unlocked before the mystery word will come that long. And the road-books say the grammar keeps
       older secrets than any of this.</p>`;
     const back = el('button', null, '← Back');

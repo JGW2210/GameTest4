@@ -246,9 +246,26 @@
     return Math.min(12, run.cls.chipMax + (run.perks.ribbon || 0));
   }
 
-  // words the loom will SUGGEST: readable + payable + within chip range.
-  // (Anything readable can still be spelled by hand — this is the index,
-  // not the permission. Hidden words never appear here, ever.)
+  /* the loom-sense: how long is the longest word the loom could weave
+   * from these tiles? Felt only up to the sense's reach (chipMax; the
+   * Ribbon Index stretches it). Returns { best, cap, beyond } — beyond
+   * is true when something longer than the reach stirs in the tiles.
+   * Readable or improvised alike; secret words never register. */
+  function loomSense(b) {
+    const cap = Math.min(12, chipMax(b.run));
+    let best = 0, beyond = false;
+    for (const e of VISIBLE_BY_LEN) {
+      if (e.len <= cap) {
+        if (e.len > best && canSpell(b, e.word)) best = e.len;
+      } else {
+        if (canSpell(b, e.word)) { beyond = true; break; }
+      }
+    }
+    return { best, cap, beyond };
+  }
+
+  // Retained for the balance simulator's autoplayer ONLY: the UI no
+  // longer surfaces found words — players spell everything by hand.
   function spellableWords(b) {
     const know = knowSet(b.run.meta, b.sealedNotes);
     const cap = chipMax(b.run);
@@ -750,7 +767,7 @@
     const el = pick(run.rng, Morph.ELEMENTS);
     offers.push({ kind: 'infuse', el: el.id, title: `Infuse ${el.name}`, desc: `Season your letter bag toward ${el.root}-words (${el.icon}).` });
     if ((run.perks.ribbon || 0) < 4 && chipMax(run) < 12)
-      offers.push({ kind: 'ribbon', title: 'Ribbon Index', desc: `The loom suggests words one rune longer (now up to ${chipMax(run) + 1}).` });
+      offers.push({ kind: 'ribbon', title: 'Ribbon Index', desc: `Your loom-sense reaches one rune further (now feels words to ${chipMax(run) + 1} runes).` });
     if (!run.perks.quill) offers.push({ kind: 'quill', title: 'Quill of Second Thoughts', desc: 'Once per battle: a second guess in one turn.' });
     if (!run.perks.whetstone) offers.push({ kind: 'whetstone', title: 'Whetstone', desc: 'Improvised words carry ×0.7 instead of ×0.5.' });
     offers.push({ kind: 'vial', title: 'Ink Vial', desc: '+6 utmost ink, and mend that much.' });
@@ -781,7 +798,7 @@
         for (const ch of el.root + el.medium + el.large) run.bag[ch] = (run.bag[ch] || 0) + 14;
         return `The bag hums with ${el.name}.`;
       }
-      case 'ribbon': run.perks.ribbon = (run.perks.ribbon || 0) + 1; return 'The index unspools further.';
+      case 'ribbon': run.perks.ribbon = (run.perks.ribbon || 0) + 1; return 'Your sense of the loom unspools further.';
       case 'quill': run.perks.quill = true; return 'The quill hums with hindsight.';
       case 'whetstone': run.perks.whetstone = true; return 'Your improvisations sharpen.';
       case 'vial': run.maxHp += 6; run.hp = Math.min(run.maxHp, run.hp + 6); return 'Your inkwell deepens.';
@@ -846,7 +863,7 @@
     createBattle, newRun, buildWorlds, battleForNode, currentStage, globalStageIdx, advance,
     guess, canGuess, useQuill, judge, serveMystery, chooseLength, guessableLengths, revealLetter,
     castWord, canSpell, tilesFor, spellableWords, mulligan, endTurn,
-    anySpellable, discardTiles, DISCARD_MAX,
+    anySpellable, discardTiles, DISCARD_MAX, loomSense,
     targetFoe, alive, describeIntent, foeIntent,
     rollRewards, applyReward, campChoices, applyCamp,
     rollEvent, applyEventChoice, applyElder,

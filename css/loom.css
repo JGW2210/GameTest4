@@ -135,14 +135,8 @@ button.quiet { background: none; border-color: transparent; text-decoration: und
 .build-hint .improv { color: var(--arc); }
 .loom-btns { display: flex; gap: 8px; justify-content: center; margin-top: 6px; flex-wrap: wrap; }
 
-/* castable chips */
+/* the loom-sense line (cast-chip suggestions removed — lengths only) */
 .speakable { margin-top: 8px; text-align: center; }
-.speakable .cast-chip {
-  font-family: 'Courier New', monospace; letter-spacing: 1px; font-weight: bold;
-  margin: 3px; padding: 3px 10px; border-radius: 12px; font-size: 13.5px;
-  background: linear-gradient(180deg, #efe0ba, #dcc691); border: 1px solid var(--gold);
-}
-.speakable .cast-chip:hover { box-shadow: 0 0 10px rgba(201,162,39,0.6); }
 
 /* ---------------- mystery panel ---------------- */
 .mystery-panel { border-left: 1px dashed #8a744c; padding-left: 16px; }
@@ -390,15 +384,6 @@ body.gl-on #screen { box-shadow: 0 26px 70px rgba(0,0,0,0.75), inset 0 0 60px rg
   50% { opacity: 1; filter: drop-shadow(0 0 9px rgba(168,135,255,1)); }
 }
 
-/* cast chips shimmer faintly, inviting the speaking */
-.speakable .cast-chip { position: relative; overflow: hidden; }
-.speakable .cast-chip::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(115deg, transparent 30%, rgba(255,240,190,0.5) 50%, transparent 70%);
-  background-size: 240% 100%; animation: chipshimmer 3.4s infinite; pointer-events: none;
-}
-@keyframes chipshimmer { 0% { background-position: 140% 0; } 60%, 100% { background-position: -140% 0; } }
-
 /* ---- the apocrypha: secret notes, once held ---- */
 .note-group.apocrypha h3 { color: var(--arc); border-bottom-color: rgba(123,79,216,0.4); }
 .note.secret-note {
@@ -418,3 +403,13 @@ body.gl-on #screen { box-shadow: 0 26px 70px rgba(0,0,0,0.75), inset 0 0 60px rg
   animation: stale-in 0.4s ease-out;
 }
 @keyframes stale-in { from { opacity: 0; transform: translateY(4px); } }
+
+/* ---- the loom-sense note ---- */
+.sense-note {
+  margin: 6px auto 2px; padding: 5px 14px; max-width: 480px;
+  font-size: 13px; text-align: center; color: #6b5326;
+  border: 1px solid rgba(169,126,30,0.35); border-radius: 10px;
+  background: rgba(201,162,39,0.08);
+}
+.sense-note b { color: var(--gold); }
+.sense-note.faint { color: #7a6a4a; border-style: dashed; background: rgba(58,44,26,0.05); font-style: italic; }
