@@ -95,6 +95,7 @@
       cursedLetter: null,
       mulligans: 1 + (run.perks.mulligans || 0),
       guessesPerTurn: 1,
+      tileDiscardUsed: false,
       quillUsed: false,
       sealedNotes: new Set(),
       turn: 0, over: false, won: false,
@@ -257,6 +258,32 @@
       if (Morph.canRead(know, e) && canSpell(b, e.word)) out.push(e);
     }
     return out.sort((a, z) => z.len - a.len || (a.word < z.word ? -1 : 1)).slice(0, 12);
+  }
+
+  // stale check: can ANY word of the loom-tongue be woven from the current
+  // tray — readable or improvised, any length, chip cap ignored? Secret
+  // (hidden) words don't count: their absence must stay unremarkable.
+  const VISIBLE_BY_LEN = Morph.VISIBLE.slice().sort((a, z) => a.len - z.len);
+  function anySpellable(b) {
+    for (const e of VISIBLE_BY_LEN) if (canSpell(b, e.word)) return e.word;
+    return null;
+  }
+
+  /* once per turn: cast up to DISCARD_MAX picked tiles back and draw as
+   * many fresh — the pressure valve for a loom with no words in it */
+  const DISCARD_MAX = 5;
+  function discardTiles(b, ids) {
+    if (b.over || b.tileDiscardUsed) return { ok: false, reason: b.over ? 'over' : 'used' };
+    const tiles = (ids || []).slice(0, DISCARD_MAX)
+      .map(id => b.tray.find(t => t.id === id))
+      .filter(t => t && !t.frozen);
+    if (!tiles.length) return { ok: false, reason: 'none' };
+    for (const t of tiles) b.tray.splice(b.tray.indexOf(t), 1);
+    for (let i = 0; i < tiles.length; i++) b.tray.push(drawTile(b.rng, b.bag));
+    b.tileDiscardUsed = true;
+    say(b, `🗑 You cast ${tiles.length} tile${tiles.length > 1 ? 's' : ''} back into the bag and draw anew.`);
+    fxEmit(b, { type: 'discard', n: tiles.length });
+    return { ok: true, n: tiles.length };
   }
 
   function castWord(b, word) {
@@ -604,6 +631,7 @@
     b.turn++;
     b.player.block = 0;
     b.guessesThisTurn = 0;
+    b.tileDiscardUsed = false;
     for (const t of b.tray) if (t.frozen) t.frozen--;
     const debt = b._trayDebt || 0;
     b._trayDebt = 0;
@@ -818,6 +846,7 @@
     createBattle, newRun, buildWorlds, battleForNode, currentStage, globalStageIdx, advance,
     guess, canGuess, useQuill, judge, serveMystery, chooseLength, guessableLengths, revealLetter,
     castWord, canSpell, tilesFor, spellableWords, mulligan, endTurn,
+    anySpellable, discardTiles, DISCARD_MAX,
     targetFoe, alive, describeIntent, foeIntent,
     rollRewards, applyReward, campChoices, applyCamp,
     rollEvent, applyEventChoice, applyElder,

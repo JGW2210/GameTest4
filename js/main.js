@@ -143,6 +143,12 @@
         case 'block':
           later(() => { const p = meP(); FX.shield(p.x, p.y); });
           break;
+        case 'discard':
+          later(() => {
+            const p = centerOf(document.querySelector('.tray'));
+            FX.burst(p.x, p.y, { count: Math.min(40, 8 * ev.n), colors: ['#8a744c', '#c9a227', '#5a4a30'], speed: 4, size: 3.5 });
+          });
+          break;
         case 'heal':
           later(() => { const p = meP(); FX.heal(p.x, p.y); floatText(p.x, p.y - 10, '+' + ev.amount, '#5fbf6d'); });
           break;
@@ -418,6 +424,17 @@
     castBtn.onclick = castBuilt;
     const clearBtn = el('button', null, '⌫ Unpick');
     clearBtn.onclick = () => { picked.pop(); refreshBuild(); };
+    const discBtn = el('button', null, b.tileDiscardUsed ? '🗑 Discarded' : '🗑 Discard');
+    discBtn.id = 'discard-btn';
+    discBtn.title = `Once per turn: pick up to ${Loom.DISCARD_MAX} tiles and cast them back for as many fresh draws`;
+    discBtn.onclick = () => {
+      if (!picked.length) { toast(`Pick up to ${Loom.DISCARD_MAX} tiles first, then discard them.`); return; }
+      if (picked.length > Loom.DISCARD_MAX) { toast(`Only ${Loom.DISCARD_MAX} tiles may go back at once.`); return; }
+      const r = Loom.discardTiles(b, picked);
+      if (!r.ok) { toast(r.reason === 'used' ? 'The bag accepts returns once a turn.' : 'The loom refuses.'); return; }
+      picked = [];
+      afterAction();
+    };
     const mullBtn = el('button', null, `♻ Sweep (${b.mulligans})`);
     mullBtn.disabled = !b.mulligans;
     mullBtn.onclick = () => { if (Loom.mulligan(b)) { picked = []; renderBattle(); } };
@@ -426,13 +443,28 @@
     const endBtn = el('button', null, '⌛ End Turn');
     endBtn.id = 'end-turn';
     endBtn.onclick = () => { Loom.endTurn(b); picked = []; afterAction(); };
-    btns.append(castBtn, clearBtn, mullBtn, guideBtn, endBtn);
+    btns.append(castBtn, clearBtn, discBtn, mullBtn, guideBtn, endBtn);
     loom.appendChild(btns);
 
     const speak = el('div', 'speakable');
     const spellable = Loom.spellableWords(b);
     const cap = Loom.chipMax(run);
-    if (spellable.length) {
+    // stale loom: not one word of the tongue — readable, improvised, or
+    // beyond the suggestion cap — can be woven from these tiles
+    const stale = !b.over && !Loom.anySpellable(b);
+    if (stale) {
+      const outs = [];
+      if (!b.tileDiscardUsed) outs.push(`discard up to ${Loom.DISCARD_MAX} tiles`);
+      if (b.mulligans) outs.push('sweep the loom');
+      outs.push('guess the mystery');
+      speak.appendChild(el('div', 'stale-note',
+        `🕸 <b>The loom is stale</b> — no word of the loom-tongue can be woven from these tiles, at any length. ` +
+        `You can still ${outs.join(', ')}.`));
+      if (b._staleToastTurn !== b.turn) {
+        b._staleToastTurn = b.turn;
+        toast('🕸 The loom is stale — no word can be woven from these tiles.', 3200);
+      }
+    } else if (spellable.length) {
       speak.appendChild(el('div', 'small dim', `the loom suggests (to ${cap > 12 ? 'any length' : cap + ' runes'} — longer words must be spelled by hand):`));
       spellable.forEach(e => {
         const c = el('button', 'cast-chip', `${Morph.EL_BY_ID[e.el].icon} ${e.word}`);
@@ -441,7 +473,7 @@
         speak.appendChild(c);
       });
     } else {
-      speak.appendChild(el('div', 'small dim', 'no suggestion fits this loom — deduce, improvise, spell by hand, or sweep'));
+      speak.appendChild(el('div', 'small dim', 'no suggestion fits this loom — deduce, improvise, spell by hand, discard, or sweep'));
     }
     loom.appendChild(speak);
     left.appendChild(loom);
@@ -637,6 +669,8 @@
         : `<span class="improv">its grammar is not in your notes — improvised at half power</span>`)
       : (word.length >= 3 ? 'not a word of the loom-tongue' : '');
     if (castBtn) castBtn.disabled = !entry;
+    const discBtn = document.getElementById('discard-btn');
+    if (discBtn) discBtn.disabled = b.over || b.tileDiscardUsed || !picked.length || picked.length > Loom.DISCARD_MAX;
   }
 
   function castBuilt() {

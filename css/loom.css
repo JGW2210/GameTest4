@@ -408,3 +408,13 @@ body.gl-on #screen { box-shadow: 0 26px 70px rgba(0,0,0,0.75), inset 0 0 60px rg
 .guide .elder { color: var(--arc); font-weight: bold; margin-left: 3px; }
 .guide .apoc-row td { color: #4a3a6b; background: rgba(123,79,216,0.07); }
 .guide .apoc-row .mono { font-weight: bold; }
+
+/* ---- stale loom warning ---- */
+.stale-note {
+  margin: 4px auto 2px; padding: 7px 14px; max-width: 480px;
+  border: 1.5px dashed rgba(162,53,44,0.6); border-radius: 10px;
+  background: rgba(162,53,44,0.07); color: var(--bad);
+  font-size: 13px; text-align: center;
+  animation: stale-in 0.4s ease-out;
+}
+@keyframes stale-in { from { opacity: 0; transform: translateY(4px); } }
