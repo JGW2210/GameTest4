@@ -83,13 +83,13 @@
    * still be OVERREACHED at improvised power) and scales the foes.
    * Beating a tier unlocks the next. */
   const DIFFICULTIES = [
-    { id: 1, name: 'Apprentice', icon: '🕯', cap: 8, scale: 0.7,
+    { id: 1, name: 'Apprentice', icon: '🕯', cap: 8, scale: 0.8,
       desc: 'Single-element words to 8 runes. A gentler road.' },
-    { id: 2, name: 'Journeyman', icon: '🖋', cap: 10, scale: 0.9,
+    { id: 2, name: 'Journeyman', icon: '🖋', cap: 10, scale: 1.05,
       desc: 'The Sovereigns open — words to 10 runes — and the road presses harder.' },
-    { id: 3, name: 'Artisan', icon: '🧵', cap: 12, scale: 1.2,
+    { id: 3, name: 'Artisan', icon: '🧵', cap: 12, scale: 1.35,
       desc: 'The weddings open — blended words to 12 runes — and the elder roads appear.' },
-    { id: 4, name: 'Loomwright', icon: '🪡', cap: 13, scale: 1.5,
+    { id: 4, name: 'Loomwright', icon: '🪡', cap: 13, scale: 1.65,
       desc: 'The grand Woven Unions, the cruelest foes, and the deepest secrets of the tongue.' },
   ];
   const DIFF_BY_ID = {};
@@ -98,6 +98,67 @@
   // ATTUNES three of the discovered elements; battles offer the rest.
   const STARTER_ELEMENTS = ['ign', 'aqu', 'aer', 'san', 'ter'];
   const RUN_ELEMENTS = 3;
+
+  /* ---------------- the rune pouch: letters come from elements ----------------
+   * Each element carries a KIT — the letters of its root, binder and
+   * suffixes, frequency-weighted and normalized to one mass. The run's
+   * pouch is the attuned kits poured together: a trio speaks in ~9
+   * distinct letters. Center letters are NOT in any kit — the shaped
+   * words are reached through vessels and uncut runes at first. The
+   * late spellings (the keys to the blends) join only at Artisan and
+   * above, and held secrets SEEP their letters in faintly. */
+  const KIT_MASS = 100;
+  const KIT_ALT_MASS = 12;
+  const SECRET_SEEP = 3;
+  const KITS = (() => {
+    const out = {};
+    for (const el of Morph.ALL_ELEMENTS) {
+      const freq = {};
+      const add = (s, w) => { for (const ch of s) freq[ch] = (freq[ch] || 0) + w; };
+      add(el.root, 1);
+      if (el.longRoot) add(el.longRoot, 0.5);
+      add(el.conn, 1); add(el.small, 1); add(el.medium, 1); add(el.large, 1);
+      let total = 0;
+      for (const k in freq) total += freq[k];
+      const core = {};
+      for (const k in freq) core[k] = Math.round(freq[k] / total * KIT_MASS * 10) / 10;
+      const alt = {};
+      for (const ch of el.alt) alt[ch] = (alt[ch] || 0) + KIT_ALT_MASS / el.alt.length;
+      out[el.id] = { core, alt };
+    }
+    return out;
+  })();
+  function addKit(bag, elId, withAlt) {
+    const kit = KITS[elId];
+    if (!kit) return;
+    for (const ch in kit.core) bag[ch] = (bag[ch] || 0) + kit.core[ch];
+    if (withAlt) for (const ch in kit.alt) bag[ch] = (bag[ch] || 0) + kit.alt[ch];
+  }
+  // the letters a piece of secret knowledge lets seep into the pouch
+  function secretLetters(id) {
+    const kind = id.split(':')[0], key = id.split(':')[1];
+    if (kind === 'sroot') { const el = Morph.EL_BY_ID[key]; return (el && el.secret) || ''; }
+    if (kind === 'scenter') { const c = Morph.CENTER_BY_ID[key]; return c ? c.seq : ''; }
+    if (kind === 'sjoin') { const j = Morph.JOINER_BY_ID[key]; return j ? j.seq : ''; }
+    if (kind === 'selem') {
+      const el = Morph.EL_BY_ID[key];
+      return el ? el.root + el.alt + el.conn + el.small + el.medium + el.large : '';
+    }
+    return ''; // forms and rules carry no letters of their own
+  }
+  function addSecretSeep(bag, id) {
+    for (const ch of new Set(secretLetters(id))) bag[ch] = (bag[ch] || 0) + SECRET_SEEP;
+  }
+  // the distinct letters a set of elements brings (for the prep screen)
+  function pouchLetters(elIds, withAlt) {
+    const s = new Set();
+    for (const id of elIds) {
+      const el = Morph.EL_BY_ID[id];
+      if (!el) continue;
+      for (const ch of el.root + (el.longRoot || '') + el.conn + el.small + el.medium + el.large + (withAlt ? el.alt : '')) s.add(ch);
+    }
+    return Array.from(s).sort();
+  }
   /* ---------------- knowledge: elements carry their parts whole ---------------- */
   function knowSet(meta, sealed) {
     const s = new Set(meta.parts);
@@ -390,23 +451,28 @@
   const windingSeq = (v) => v.capSeq || v.seq;
 
   /* feed letters from the pile into an unwound ACTIVE vessel. Each tile
-   * fills one still-needed letter of the current wind; uncut runes are
-   * too precious for winding. Rewinding a vessel's own part takes ONE
-   * full wind; CAPTURING a new part takes CAPTURE_WINDS of them. */
+   * fills one still-needed letter of the current wind — and an uncut
+   * rune ★ may be spent to fill ANY hollow slot (with a tight pouch it
+   * is often the only way to wind a center). Rewinding a vessel's own
+   * part takes ONE full wind; CAPTURING a new part takes CAPTURE_WINDS. */
   function feedVessel(b, vesselId, ids) {
     if (b.over) return { ok: false, reason: 'over' };
     const v = activeVessels(b.run).find(x => x.id === vesselId);
     if (!v || v.wound || !windingSeq(v)) return { ok: false, reason: 'no-vessel' };
-    let fed = 0;
+    let fed = 0, blanksFed = 0;
     for (const id of ids || []) {
-      const t = b.tray.find(x => x.id === id && !x.frozen && !x.blank)
-        || (b.run.shuttle || []).find(x => x.id === id && !x.blank);
-      if (!t || !v.left.includes(t.ch)) continue;
-      v.left = v.left.replace(t.ch, '');
+      const t = b.tray.find(x => x.id === id && !x.frozen)
+        || (b.run.shuttle || []).find(x => x.id === id);
+      if (!t || !v.left.length) continue;
+      let ch = t.ch;
+      if (t.blank) { ch = v.left[0]; blanksFed++; }
+      else if (!v.left.includes(ch)) continue;
+      v.left = v.left.replace(ch, '');
       const ti = b.tray.indexOf(t);
       if (ti >= 0) b.tray.splice(ti, 1); else b.run.shuttle.splice(b.run.shuttle.indexOf(t), 1);
       fed++;
     }
+    if (blanksFed) say(b, `★ ${blanksFed > 1 ? blanksFed + ' uncut runes shape themselves' : 'An uncut rune shapes itself'} into the winding — and is spent.`);
     if (!fed) return { ok: false, reason: 'no-fit' };
     let done = false, captured = false;
     if (!v.left.length) {
@@ -1040,8 +1106,12 @@
         if (!chosen.includes(id)) chosen.push(id);
       }
     }
+    // the pouch: only the attuned elements' letters (late spellings
+    // join at Artisan+), plus a faint seep from any held secrets
     const bag = {};
-    for (const ch in Morph.LETTER_WEIGHTS) bag[ch] = Morph.LETTER_WEIGHTS[ch];
+    const withAlt = (DIFF_BY_ID[difficulty] || DIFFICULTIES[0]).cap >= 11;
+    for (const elId of chosen) addKit(bag, elId, withAlt);
+    for (const id of meta.secrets) addSecretSeep(bag, id);
     const run = {
       rng, meta, seed, cls,
       difficulty,
@@ -1232,6 +1302,7 @@
       case 'element': {
         const el = Morph.EL_BY_ID[offer.el];
         run.elements.add(el.id);
+        addKit(run.bag, el.id, diffCap(run) >= 11); // its letters join the pouch
         const fresh = !run.meta.elements.has(el.id);
         if (fresh) {
           run.meta.elements.add(el.id);
@@ -1239,8 +1310,8 @@
           run.discovered.push(el.id);
         }
         return fresh
-          ? `${el.icon} ${el.name} enters your grimoire — every part of it, yours forever — and attunes to your loom.`
-          : `${el.icon} ${el.name} attunes to your loom for this run.`;
+          ? `${el.icon} ${el.name} enters your grimoire — every part of it, yours forever — and its letters pour into your pouch.`
+          : `${el.icon} ${el.name} attunes to your loom — its letters join the pouch for this run.`;
       }
       case 'mend': run.hp = Math.min(run.maxHp, run.hp + 14); return 'You mend 14.';
       case 'loom': run.traySize++; return 'Your loom widens.';
@@ -1326,9 +1397,11 @@
     return bits.join(' · ') || 'Nothing changes, which is its own lesson.';
   }
 
-  // elder events teach hidden grammar; knowledge is permanent and unlisted
+  // elder events teach hidden grammar; knowledge is permanent and unlisted,
+  // and its letters begin to seep into the pouch at once
   function applyElder(run, ev) {
     run.meta.secrets.add(ev.teaches);
+    addSecretSeep(run.bag, ev.teaches);
     run.meta.elderDrought = 0;
     return true;
   }
@@ -1487,6 +1560,7 @@
     SOLVE_MULT, IMPROV_MULT,
     knowSet, runKnow, syncMeta, elementPartIds, chipMax, MAX_LEN,
     DIFFICULTIES, DIFF_BY_ID, diffCap, STARTER_ELEMENTS, RUN_ELEMENTS, elementOffers,
+    KITS, addKit, pouchLetters, secretLetters,
     createBattle, newRun, buildWorlds, battleForNode, currentStage, globalStageIdx, advance,
     guess, canGuess, useQuill, judge, serveMystery, chooseLength, guessableLengths, revealLetter,
     castWord, canSpell, tilesFor, spellableWords, mulligan, endTurn,

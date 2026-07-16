@@ -355,6 +355,13 @@
         eRow.appendChild(card);
       });
       $screen.appendChild(eRow);
+      // the pouch preview: exactly the letters this trio brings
+      const withAlt = Loom.DIFF_BY_ID[diff].cap >= 11;
+      const letters = Loom.pouchLetters(chosen, withAlt);
+      $screen.appendChild(el('div', 'pouch-preview',
+        `👝 your rune pouch: <span class="mono">${letters.join(' ')}</span> — ${letters.length} letters` +
+        (withAlt ? ' <span class="dim">(the late spellings ride along at this tier)</span>'
+          : ' <span class="dim">(the shaped centers are reached through vessels and uncut runes)</span>')));
       const start = el('button', 'arcane', '⚔ Begin the run');
       start.style.cssText = 'display:block;margin:16px auto 0;font-size:17px;padding:10px 28px';
       start.disabled = chosen.length !== Loom.RUN_ELEMENTS;
@@ -1243,7 +1250,10 @@
       <p class="small" style="margin-top:6px"><b>Elements & the loom-school:</b> your grimoire holds <b>elements</b>, and
       each arrives whole — root, suffixes, binder, late spelling, all inscribed the moment it is discovered. Five are known
       from the first stitch; the rest are met on the road, as spoils and strange encounters. Each run <b>attunes three</b>
-      of your discovered elements, and only attuned words speak. The school has <b>four tiers</b> — Apprentice (words to 8
+      of your discovered elements, and only attuned words speak. <b>The pouch speaks their letters:</b> your rune pouch
+      holds only the attuned elements' letters (a trio is ~9 runes of alphabet), and every element gained on the road pours
+      its letters in. The shaped centers' letters are in no kit — reach the woven words through center vessels and uncut
+      runes — and the late spellings join the pouch only at Artisan and above. The school has <b>four tiers</b> — Apprentice (words to 8
       runes), Journeyman (10), Artisan (12, and the elder roads), Loomwright (13, and the deepest secrets) — each unlocked
       by beating the one below. A readable word longer than your tier can still be <b>overreached</b>, at improvised power.</p>
       <p class="small" style="margin-top:6px"><b>Vessels (bobbins):</b> your three attuned elements' root vessels set out

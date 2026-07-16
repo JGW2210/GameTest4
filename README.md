@@ -20,8 +20,9 @@ brute force:
   pure craft: it casts at ×1.5 and leaves an uncut rune on your loom.
 - **DEPLOY** — spell any **readable** word (one whose element is attuned
   and whose parts are in your notes) from your **loom of letter tiles**.
-  Tiles are the only cost. Longer words need more, rarer letters; that
-  IS the mana curve.
+  Tiles are the only cost, and the **rune pouch speaks your elements'
+  letters**: a starting trio draws from ~9 distinct runes, so the tray
+  reads clean — and every element gained pours its letters in.
 
 You collect **elements**, and each arrives whole: the moment one enters
 your grimoire, every part of it — root, suffixes, binder, late spelling —
@@ -54,11 +55,17 @@ below: 🕯 **Apprentice** (single-element words to 8 runes, gentler foes),
 Unions, the unspoken elements, the cruelest foes). A readable word longer
 than your tier can still be **overreached** at improvised power.
 
-A run begins by **attuning three of your discovered elements** — they
-seed your loom, their root vessels ride out wound, and only attuned
-words speak. The rest of the roster (and elements you have never met)
-arrive as spoils: **elites and wardens always hold an element**, and a
-new element enters the grimoire **whole, forever**.
+A run begins by **attuning three of your discovered elements** — the
+pouch holds **only their letters** (fire + vitality + earth is exactly
+`A E G I N R S T U`), their root vessels ride out wound, and only
+attuned words speak. The shaped centers' letters live in no kit: at low
+tiers the woven words are reached through **center vessels and uncut
+runes** (a blank can now feed a vessel's hollow slots), and the late
+spellings join the pouch only at Artisan+. The rest of the roster (and
+elements you have never met) arrive as spoils: **elites and wardens
+always hold an element**, and a new element enters the grimoire
+**whole, forever — letters and all**. Held secrets **seep** their
+letters in faintly, so the elder words stay spellable.
 
 **Three worlds × four branching stages** (~20 minutes): the Margins 📜, the
 Inkfen ☠️, the Scriptorium Ruins 🏛 — each with its own foes, elite, and
@@ -142,10 +149,10 @@ harder than the power it unlocks pays back.)
 
 | tier · roster | win rate | note |
 |---|---:|---|
-| D1 Apprentice · 5 elements | ~42–54% | a first run reaches stage 10 of 12 on average |
-| D2 Journeyman · 7–10 elements | ~35% | |
-| D3 Artisan · full roster | ~35% | the Cantor reaches ~53%; elder pages begin |
-| D4 Loomwright · full + secrets | ~25–32% | the school's ceiling |
+| D1 Apprentice · 5 elements | ~44–49% | a first run reaches stage 10 of 12 on average |
+| D2 Journeyman · 7–10 elements | ~24–29% | |
+| D3 Artisan · full roster | ~27% | the Cantor reaches ~50%; elder pages begin |
+| D4 Loomwright · full + secrets | ~27–29% | the school's ceiling |
 
 ## Layout
 

@@ -245,6 +245,14 @@ button.quiet { background: none; border-color: transparent; text-decoration: und
 .len-pill.locked { opacity: 0.35; cursor: default; border-style: dashed; }
 .len-pill.diff-pill { min-width: 110px; padding: 6px 10px; }
 
+.pouch-preview {
+  margin: 12px auto 0; max-width: 560px; text-align: center;
+  font-size: 13px; padding: 7px 14px;
+  border: 1px solid rgba(169,126,30,0.4); border-radius: 10px;
+  background: rgba(201,162,39,0.08);
+}
+.pouch-preview .mono { font-family: 'Courier New', monospace; font-weight: bold; letter-spacing: 3px; color: var(--gold); }
+
 /* run prep: the element pick */
 .offer.element-pick { width: 168px; padding: 10px; }
 .offer.element-pick.picked-el {
