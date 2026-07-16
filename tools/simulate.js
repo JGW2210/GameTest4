@@ -1,5 +1,5 @@
-/* WORDLOOM — balance sim, second weaving: full 3-world runs with a
- * scripted player on the shipped engine.
+/* WORDLOOM — balance sim, third weaving: full 3-world runs with a
+ * scripted player on the shipped engine, across the loom-school's tiers.
  *   node tools/simulate.js [runsPerConfig]
  */
 const Loom = require('../js/engine.js');
@@ -7,35 +7,24 @@ const Morph = require('../js/data/morphology.js');
 
 const RUNS = Number(process.argv[2]) || 300;
 
-// the birthright: all ten roots are day-one knowledge
-const BIRTHRIGHT = Morph.ELEMENTS.map(e => 'root:' + e.id)
-  .concat(['suf:ign:small', 'suf:san:small', 'form:cantrip']);
+// discovery order for building rosters of a given size: the five
+// starters first, then the rest of the public elements
+const ROSTER_ORDER = ['ign', 'aqu', 'aer', 'san', 'ter', 'gel', 'ven', 'ful', 'umb', 'lum'];
 
-function metaWith(rng, n, secrets) {
-  const meta = {
-    parts: new Set(BIRTHRIGHT),
+function metaWith(nElements, secrets) {
+  return {
+    elements: new Set(ROSTER_ORDER.slice(0, Math.max(3, nElements))),
+    diff: 4,
+    parts: new Set(),
     secrets: new Set(secrets || []),
     solved: new Set(['IGNA', 'SANA']),
     runs: 0, wins: 0, bestNode: 0,
   };
-  const tierOf = (pid) =>
-    pid.startsWith('root:') ? 0 :
-    pid.includes(':small') ? 1 :
-    pid === 'form:word' || pid.includes(':medium') ? 2 :
-    pid.startsWith('conn:') || pid === 'form:bound' || pid === 'rule:elision' || pid === 'rule:easing' ? 3 :
-    pid.startsWith('center:') || pid === 'form:weave' || pid.startsWith('alt:') || pid === 'join:et' ? 4 : 5;
-  const ordered = Morph.PART_IDS.slice().sort((a, z) => tierOf(a) - tierOf(z) || (rng() - 0.5));
-  let added = 0;
-  for (const pid of ordered) {
-    if (added >= n) break;
-    if (!meta.parts.has(pid)) { meta.parts.add(pid); added++; }
-  }
-  return meta;
 }
 
 function trySolve(b, rng, skill) {
   const m = b.mystery;
-  const P = Loom.knowSet(b.run.meta);
+  const P = Loom.runKnow(b.run);
   const entry = Morph.WORDS[m.answer];
   const gnum = m.guesses.length;
   const revealed = m.revealed.length;
@@ -50,7 +39,6 @@ function trySolve(b, rng, skill) {
 }
 
 function pickLength(b) {
-  // guess at the longest length where we know a good share of parts
   const lens = Loom.guessableLengths(b.run);
   return lens[lens.length - 1];
 }
@@ -66,11 +54,12 @@ function playBattle(b, rng, skill) {
     while (cast && !b.over && casts < 4) {
       cast = false;
       const tgt = Loom.targetFoe(b);
-      // consider ALL readable words we can pay for (hand-spelling included)
-      const know = Loom.knowSet(b.run.meta, b.sealedNotes);
+      // consider ALL readable, tier-open words we can pay for
+      const know = Loom.runKnow(b.run, b.sealedNotes);
+      const cap = Loom.diffCap(b.run);
       const options = [];
       for (const e of Morph.VISIBLE) {
-        if (Morph.canRead(know, e) && Loom.canSpell(b, e.word)) options.push(e);
+        if (e.len <= cap && Morph.canRead(know, e) && Loom.canSpell(b, e.word)) options.push(e);
       }
       if (options.length && tgt) {
         const scored = options.map(e => {
@@ -101,10 +90,14 @@ function playBattle(b, rng, skill) {
   return b.won;
 }
 
-function simulateRun(notes, skill, clsId, seed, secrets) {
+function simulateRun(nElements, difficulty, skill, clsId, seed, secrets) {
   const rng = Loom.makeRng(seed);
-  const meta = metaWith(rng, notes, secrets);
-  const run = Loom.newRun(seed * 7 + 1, meta, clsId);
+  const meta = metaWith(nElements, secrets);
+  // attune three at random from the roster
+  const roster = Array.from(meta.elements);
+  const chosen = [];
+  while (chosen.length < 3 && roster.length) chosen.push(roster.splice(Math.floor(rng() * roster.length), 1)[0]);
+  const run = Loom.newRun(seed * 7 + 1, meta, clsId, { difficulty, elements: chosen });
   let guard = 0;
   while (!run.over && guard++ < 20) {
     const stage = Loom.currentStage(run);
@@ -127,9 +120,9 @@ function simulateRun(notes, skill, clsId, seed, secrets) {
       Loom.applyElder(run, node.event);
     } else {
       const b = Loom.battleForNode(run, node);
-      if (!playBattle(b, rng, skill)) return { won: false, stage: Loom.globalStageIdx(run), notes: meta.parts.size, secrets: meta.secrets.size };
+      if (!playBattle(b, rng, skill)) return { won: false, stage: Loom.globalStageIdx(run), els: run.elements.size, secrets: meta.secrets.size };
       const offers = Loom.rollRewards(run, node);
-      const rank = (o) => o.kind === 'formnote' ? 7 : o.kind === 'study' ? 5
+      const rank = (o) => o.kind === 'element' ? (o.rare ? 7 : 5.5)
         : (o.kind === 'mend' && run.hp < run.maxHp * 0.6) ? 6
         : o.kind === 'bobbin' ? 4.5
         : o.kind === 'ribbon' ? 4 : o.kind === 'loom' ? 3.5 : o.kind === 'vial' ? 3 : 2;
@@ -138,29 +131,29 @@ function simulateRun(notes, skill, clsId, seed, secrets) {
     }
     Loom.advance(run);
   }
-  return { won: run.victory, stage: 12, notes: run.meta.parts.size, secrets: run.meta.secrets.size };
+  return { won: run.victory, stage: 12, els: run.elements.size, secrets: run.meta.secrets.size };
 }
 
-function config(label, notes, skill, clsId, secrets) {
-  let wins = 0, stageSum = 0, notesGained = 0, secretsGained = 0;
+function config(label, nElements, difficulty, skill, clsId, secrets) {
+  let wins = 0, stageSum = 0, elsSum = 0, secretsGained = 0;
   const deaths = new Array(13).fill(0);
-  const base = BIRTHRIGHT.length + Math.min(notes, Morph.PART_IDS.length - BIRTHRIGHT.length);
   for (let i = 0; i < RUNS; i++) {
-    const r = simulateRun(notes, skill, clsId, 1000 + notes * 31 + i * 13, secrets);
+    const r = simulateRun(nElements, difficulty, skill, clsId, 1000 + nElements * 31 + difficulty * 7 + i * 13, secrets);
     if (r.won) wins++; else deaths[r.stage]++;
     stageSum += r.stage;
-    notesGained += r.notes - base;
+    elsSum += r.els;
     secretsGained += r.secrets - (secrets ? secrets.length : 0);
   }
-  console.log(`${label.padEnd(44)} win ${(100 * wins / RUNS).toFixed(0).padStart(3)}%  reach ${(stageSum / RUNS).toFixed(1)}/12  +notes ${(notesGained / RUNS).toFixed(1)}  +secrets ${(secretsGained / RUNS).toFixed(2)}  deaths ${deaths.join('/')}`);
+  console.log(`${label.padEnd(46)} win ${(100 * wins / RUNS).toFixed(0).padStart(3)}%  reach ${(stageSum / RUNS).toFixed(1)}/12  attuned ${(elsSum / RUNS).toFixed(1)}  +secrets ${(secretsGained / RUNS).toFixed(2)}  deaths ${deaths.join('/')}`);
 }
 
-console.log(`\n=== WORDLOOM v2 balance (${RUNS} runs/config) — 3 worlds × 4 stages ===\n`);
-config('fresh (13 notes, all roots) scriv, novice', 0, 0.04, 'scrivener');
-config('fresh (13 notes, all roots) scriv, sharp', 0, 0.10, 'scrivener');
-config('16 extra notes, scrivener, sharp', 16, 0.10, 'scrivener');
-config('30 extra notes, scrivener, sharp', 30, 0.10, 'scrivener');
-config('30 extra notes, lector, sharp', 30, 0.10, 'lector');
-config('30 extra notes, cantor, sharp', 30, 0.10, 'cantor');
-config('full grammar, scrivener, sharp', 99, 0.10, 'scrivener');
-config('full grammar + all secrets, cantor', 99, 0.10, 'cantor', Morph.SECRET_IDS);
+console.log(`\n=== WORDLOOM v3 balance (${RUNS} runs/config) — the loom-school ===\n`);
+config('D1 Apprentice · 5 elements, novice', 5, 1, 0.04, 'scrivener');
+config('D1 Apprentice · 5 elements, sharp', 5, 1, 0.10, 'scrivener');
+config('D1 Apprentice · full roster, sharp', 10, 1, 0.10, 'scrivener');
+config('D2 Journeyman · 7 elements, sharp', 7, 2, 0.10, 'scrivener');
+config('D2 Journeyman · full roster, sharp', 10, 2, 0.10, 'scrivener');
+config('D3 Artisan · full roster, sharp', 10, 3, 0.10, 'scrivener');
+config('D3 Artisan · full roster, cantor', 10, 3, 0.10, 'cantor');
+config('D4 Loomwright · full roster, cantor', 10, 4, 0.10, 'cantor');
+config('D4 Loomwright · full + all secrets, cantor', 10, 4, 0.10, 'cantor', Morph.SECRET_IDS);

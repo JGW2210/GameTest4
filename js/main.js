@@ -8,7 +8,7 @@
   const $hud = document.getElementById('hud');
   const $toast = document.getElementById('toast');
 
-  let meta = LoomSave.load();
+  let meta = Loom.syncMeta(LoomSave.load());
   let run = null;
   let battle = null;
   let picked = [];
@@ -236,11 +236,20 @@
   </svg>`;
 
   function hud() {
-    const notes = meta.parts.size;
-    const readable = Morph.readableCount(Loom.knowSet(meta));
-    $hud.innerHTML = run
-      ? `<span>${run.cls.icon}</span><span>🖋 ink <b>${run.hp}/${run.maxHp}</b></span><span>✒️ notes <b>${notes}</b>/${Morph.PART_IDS.length}</span><span title="words your knowledge can read">📖 reads <b>${readable}</b>/${Morph.VISIBLE.length}</span><span>🪡 loom <b>${run.traySize}</b></span>`
-      : `<span>✒️ notes <b>${notes}</b>/${Morph.PART_IDS.length}</span><span title="words your knowledge can read">📖 reads <b>${readable}</b>/${Morph.VISIBLE.length}</span><span>🏆 wins <b>${meta.wins}</b>/${meta.runs} runs</span>`;
+    if (run) {
+      const d = Loom.DIFF_BY_ID[run.difficulty];
+      const attuned = Array.from(run.elements).map(id => Morph.EL_BY_ID[id].icon).join('');
+      const readable = Morph.readableCount(Loom.runKnow(run));
+      $hud.innerHTML = `<span>${run.cls.icon}</span><span title="${d.name} — words open to ${d.cap} runes">${d.icon} <b>${d.name}</b></span>` +
+        `<span>🖋 ink <b>${run.hp}/${run.maxHp}</b></span>` +
+        `<span title="the elements attuned this run">${attuned}</span>` +
+        `<span title="words this run can read">📖 reads <b>${readable}</b>/${Morph.VISIBLE.length}</span><span>🪡 loom <b>${run.traySize}</b></span>`;
+    } else {
+      const els = meta.elements.size;
+      $hud.innerHTML = `<span title="elements in your grimoire">🌳 elements <b>${els}</b>/${Morph.ELEMENTS.length}</span>` +
+        `<span title="the loom-school">${Loom.DIFF_BY_ID[meta.diff].icon} tier <b>${meta.diff}</b>/4</span>` +
+        `<span>🏆 wins <b>${meta.wins}</b>/${meta.runs} runs</span>`;
+    }
   }
 
   /* ================= title ================= */
@@ -293,7 +302,7 @@
         <div class="small" style="margin-top:6px">${locked ? '🔒 ' + c.unlockText : c.tagline}</div>
         <div class="small dim" style="margin-top:6px">${locked ? '' : c.desc}</div>
         <div class="small" style="margin-top:6px">🖋 ${c.hp} · 🪡 ${c.tray} tiles · sense to ${c.chipMax > 12 ? 'ANY' : c.chipMax + 'L'}${c.power !== 1 ? ' · words ×' + c.power : ''}</div>`);
-      if (!locked) card.onclick = () => startRun(c.id);
+      if (!locked) card.onclick = () => renderRunPrep(c.id);
       row.appendChild(card);
     });
     $screen.appendChild(row);
@@ -303,10 +312,66 @@
     $screen.appendChild(back);
   }
 
-  function startRun(clsId) {
+  /* ================= run prep: difficulty & the three elements ================= */
+  let lastPrep = null; // remember the player's last choices
+  function renderRunPrep(clsId) {
+    const cls = Weavers.BY_ID[clsId];
+    let diff = lastPrep && lastPrep.diff <= meta.diff ? lastPrep.diff : meta.diff;
+    let chosen = (lastPrep ? lastPrep.els.filter(id => meta.elements.has(id)) : []).slice(0, Loom.RUN_ELEMENTS);
+    if (chosen.length < Loom.RUN_ELEMENTS) {
+      for (const id of meta.elements) {
+        if (chosen.length >= Loom.RUN_ELEMENTS) break;
+        if (!chosen.includes(id)) chosen.push(id);
+      }
+    }
+    const draw = () => {
+      $screen.innerHTML = `<h2 class="center">${cls.icon} ${cls.name} — prepare the run</h2>`;
+      $screen.appendChild(el('div', 'small center', 'The loom-school — beat a tier to open the next:'));
+      const dRow = el('div', 'len-row');
+      Loom.DIFFICULTIES.forEach(d => {
+        const locked = d.id > meta.diff;
+        const pill = el('button', 'len-pill diff-pill' + (locked ? ' locked' : '') + (d.id === diff ? ' selected' : ''), `${d.icon} ${d.name}`);
+        pill.title = locked ? 'Beat the tier below to unlock it' : d.desc;
+        if (!locked) pill.onclick = () => { diff = d.id; draw(); };
+        dRow.appendChild(pill);
+      });
+      $screen.appendChild(dRow);
+      $screen.appendChild(el('div', 'small center dim', Loom.DIFF_BY_ID[diff].desc));
+      $screen.appendChild(el('div', 'small center', `<br>Attune <b>${Loom.RUN_ELEMENTS}</b> of your <b>${meta.elements.size}</b> discovered elements — they seed your loom, and their root vessels ride out wound:`));
+      const eRow = el('div', 'offers');
+      Array.from(meta.elements).forEach(id => {
+        const e = Morph.EL_BY_ID[id];
+        const on = chosen.includes(id);
+        const card = el('div', 'offer element-pick' + (on ? ' picked-el' : ''), `
+          <div style="font-size:26px;text-align:center">${e.icon}</div>
+          <b>${e.name}</b>
+          <div class="small" style="margin-top:4px">${e.identity}</div>
+          <div class="small dim" style="margin-top:4px;font-family:'Courier New',monospace">${e.root} · -${e.small} -${e.medium} -${e.large}</div>`);
+        card.onclick = () => {
+          if (on) { if (chosen.length > 1) chosen = chosen.filter(x => x !== id); }
+          else { chosen.push(id); if (chosen.length > Loom.RUN_ELEMENTS) chosen.shift(); }
+          draw();
+        };
+        eRow.appendChild(card);
+      });
+      $screen.appendChild(eRow);
+      const start = el('button', 'arcane', '⚔ Begin the run');
+      start.style.cssText = 'display:block;margin:16px auto 0;font-size:17px;padding:10px 28px';
+      start.disabled = chosen.length !== Loom.RUN_ELEMENTS;
+      start.onclick = () => { lastPrep = { diff, els: chosen.slice() }; startRun(clsId, diff, chosen); };
+      $screen.appendChild(start);
+      const back = el('button', 'quiet', '← choose another weaver');
+      back.style.cssText = 'display:block;margin:10px auto 0';
+      back.onclick = renderClassSelect;
+      $screen.appendChild(back);
+    };
+    draw();
+  }
+
+  function startRun(clsId, diff, elements) {
     meta.runs++;
     LoomSave.save(meta);
-    run = Loom.newRun((Date.now() % 2147483647) | 0, meta, clsId);
+    run = Loom.newRun((Date.now() % 2147483647) | 0, meta, clsId, { difficulty: diff, elements });
     renderStageChoice(true);
   }
 
@@ -583,7 +648,9 @@
     for (let len = 4; len <= Loom.MAX_LEN; len++) {
       const ok = lens.includes(len);
       const pill = el('button', 'len-pill' + (ok ? '' : ' locked') + (m && m.len === len ? ' selected' : ''), String(len));
-      pill.title = ok ? `ask the loom for a ${len}-rune mystery` : 'its form note is not in your grimoire';
+      pill.title = ok ? `ask the loom for a ${len}-rune mystery`
+        : len > Loom.diffCap(run) ? 'beyond this tier of the loom-school — win to climb'
+        : 'no readable word of this length in your notes';
       if (ok && !b.over) pill.onclick = () => {
         if (m && m.len === len) return;
         if (m && m.guesses.length && !confirm(`Abandon the current ${m.len}-rune word and its clues?`)) return;
@@ -653,19 +720,18 @@
     const P = meta.parts;
     const S = meta.secrets;
     const suf = (e, sz, txt) => P.has('suf:' + e.id + ':' + sz) ? '-' + txt : '·';
+    const attuned = (e) => run && run.elements.has(e.id);
+    const dormant = Morph.ELEMENTS.filter(e => meta.elements.has(e.id) && run && !run.elements.has(e.id));
     const g = el('div', 'guide');
-    g.innerHTML = `<div class="small" style="margin-bottom:4px"><b>🪡 Loom guide</b> — notes in your grimoire</div>
+    g.innerHTML = `<div class="small" style="margin-bottom:4px"><b>🪡 Loom guide</b> — the elements attuned this run</div>
       <table>
-      ${Morph.ELEMENTS.map(e => {
-        const root = P.has('root:' + e.id);
-        const conn = P.has('conn:' + e.id);
-        const alt = P.has('alt:' + e.id);
+      ${Morph.ELEMENTS.filter(e => attuned(e)).map(e => {
         const elder = S.has('sroot:' + e.id);
-        return `<tr class="${root ? '' : 'unk'}"><td>${e.icon}</td><td class="mono">${root ? e.root : '???'}${elder ? `<span class="elder" title="the elder spelling — half again as hot">·${e.secret}</span>` : ''}</td>
-          <td class="mono">${root ? [suf(e, 'small', e.small), suf(e, 'medium', e.medium), suf(e, 'large', e.large)].join(' ') : '· · ·'}</td>
-          <td class="mono">${conn ? (e.longRoot ? '→' + e.longRoot : '+' + e.conn) : '·'}</td>
-          <td class="mono">${alt ? '⋯' + e.alt : '·'}</td>
-          <td>${root ? e.name : 'unknown'}</td></tr>`;
+        return `<tr><td>${e.icon}</td><td class="mono">${e.root}${elder ? `<span class="elder" title="the elder spelling — half again as hot">·${e.secret}</span>` : ''}</td>
+          <td class="mono">${[suf(e, 'small', e.small), suf(e, 'medium', e.medium), suf(e, 'large', e.large)].join(' ')}</td>
+          <td class="mono">${e.longRoot ? '→' + e.longRoot : '+' + e.conn}</td>
+          <td class="mono">⋯${e.alt}</td>
+          <td>${e.name}</td></tr>`;
       }).join('')}
       ${Morph.SECRET_ELEMENTS.filter(e => S.has('selem:' + e.id)).map(e =>
         `<tr class="apoc-row"><td>${e.icon}</td><td class="mono">${e.root}</td>
@@ -674,6 +740,7 @@
           <td class="mono">⋯${e.alt}</td>
           <td title="${e.identity}">${e.name}</td></tr>`).join('')}
       </table>
+      ${dormant.length ? `<div class="small dim">dormant this run: ${dormant.map(e => e.icon + ' ' + e.name).join(' · ')}</div>` : ''}
       <div style="margin-top:5px">centers: ${Morph.CENTERS.map(c => P.has('center:' + c.id)
         ? `<span class="mono" title="${c.shape}">${c.seq}</span>` : '<span class="dim">··</span>').join(' ')}${Morph.SECRET_CENTERS.filter(c => S.has('scenter:' + c.id)).map(c =>
         ` <span class="mono elder" title="${c.shape}">${c.seq}</span>`).join('')}</div>
@@ -922,14 +989,15 @@
     const castBtn = document.getElementById('cast-btn');
     if (!build) return;
     const entry = Morph.WORDS[word];
-    const know = Loom.knowSet(meta, b.sealedNotes);
+    const know = Loom.runKnow(run, b.sealedNotes);
     const readable = entry && Morph.canRead(know, entry);
+    const within = entry && entry.len <= Loom.diffCap(run);
     const usesBlank = picked.some(id => { const t = tileById(id); return t && t.blank; });
     const bobbinCount = picked.filter(id => { const t = tileById(id); return t && t.seq; }).length;
     // an elder word may only be spelled with true letters
     const blankBarred = entry && entry.hidden && usesBlank && !Loom.canSpell(b, word, { noBlanks: true });
     build.innerHTML = word
-      ? `<span class="${entry ? (readable && !blankBarred ? 'ok' : 'improv') : 'no'}">${word}</span>`
+      ? `<span class="${entry && readable ? (within && !blankBarred ? 'ok' : 'improv') : 'no'}">${word}</span>`
       : '<span class="no dim">— pick tiles to weave a word —</span>';
     // NEVER hint at hidden words: an unreadable hidden word looks identical
     // to an unreadable ordinary word.
@@ -938,10 +1006,13 @@
       : blankBarred
         ? '<span class="improv">★ this word must be spelled true — the uncut rune cannot shape it</span>'
         : entry
-          ? (readable ? `✓ ${entry.hidden ? entry.name : entry.name + ' — ' + entry.desc}`
-            : `<span class="improv">its grammar is not in your notes — improvised at half power</span>`)
+          ? (readable
+            ? (within
+              ? `✓ ${entry.hidden ? entry.name : entry.name + ' — ' + entry.desc}`
+              : `<span class="improv">overreach — longer than your tier's ${Loom.diffCap(run)} runes, spoken at improvised power</span>`)
+            : 'this word is not in your notes — its element is not attuned')
           : (word.length >= 3 ? 'not a word of the loom-tongue' : '');
-    if (castBtn) castBtn.disabled = !entry || !!blankBarred || bobbinCount > 1;
+    if (castBtn) castBtn.disabled = !entry || !readable || !!blankBarred || bobbinCount > 1;
     const discBtn = document.getElementById('discard-btn');
     if (discBtn) discBtn.disabled = b.over || b.tileDiscardUsed || !picked.length || picked.length > Loom.DISCARD_MAX;
   }
@@ -956,7 +1027,9 @@
     if (!r.ok) {
       toast(r.reason === 'true-spelling'
         ? '★ This word must be spelled true — the uncut rune cannot shape it.'
-        : 'The loom refuses.');
+        : r.reason === 'unread'
+          ? 'That word is not in your notes — its element is not attuned to this run.'
+          : 'The loom refuses.');
       return;
     }
     picked = [];
@@ -1000,16 +1073,12 @@
     const b = battle;
     meta.bestNode = Math.max(meta.bestNode, Loom.globalStageIdx(run) + 1);
     LoomSave.save(meta);
-    const notes = b.stats.notes;
-    flipScreen(() => battleWonScreen(b, notes));
+    flipScreen(() => battleWonScreen(b));
   }
 
-  function battleWonScreen(b, notes) {
+  function battleWonScreen(b) {
     $screen.innerHTML = runStrip() + worldBanner() + `
       <h2 class="center">🏆 The page is yours</h2>
-      <p class="small center">${notes.length
-        ? `Notes inscribed: <b>${notes.map(pid => Morph.PARTS[pid].title.split(' — ')[0]).join(' · ')}</b> — yours forever.`
-        : 'No new grammar this time — the grimoire waits.'}</p>
       <p class="small center dim">Choose a spoil:</p>`;
     const offers = Loom.rollRewards(run, b._node || { type: 'battle' });
     const row = el('div', 'offers');
@@ -1096,8 +1165,10 @@
   /* ================= grimoire / primer / whisper ================= */
   function renderGrimoire(backTo) {
     const readable = Morph.readableCount(Loom.knowSet(meta));
-    $screen.innerHTML = `<h2>📖 The Grimoire — ${meta.parts.size}/${Morph.PART_IDS.length} notes</h2>
-      <p class="small dim">You do not collect words — you collect the grammar. Your knowledge currently reads <b>${readable}/${Morph.VISIBLE.length}</b> words of the loom-tongue.</p>`;
+    $screen.innerHTML = `<h2>📖 The Grimoire — ${meta.elements.size}/${Morph.ELEMENTS.length} elements</h2>
+      <p class="small dim">Every element you discover brings its grammar whole — no note left to hunt.
+      The grimoire reads <b>${readable}/${Morph.VISIBLE.length}</b> words of the loom-tongue
+      (${meta.parts.size}/${Morph.PART_IDS.length} notes); each run attunes ${Loom.RUN_ELEMENTS} elements at the loom.</p>`;
     const GROUPS = [
       ['roots', '🌳 Roots'], ['suffixes', '✂️ Suffixes'], ['binders', '🧵 Binders'],
       ['centers', '🌀 Centers'], ['joiners', '💍 Joiners'], ['forms', '𝔏 Forms'], ['rules', '✒️ Rules'],
@@ -1169,20 +1240,24 @@
       vessel costs a fifth. The breath returns when the turn ends. <b>Uncut runes:</b> solving a mystery leaves a
       blank tile ★ on your loom — shaped into any letter when spoken, spent forever, and never for the elder words.
       <b>The shuttle:</b> once per turn, set one tile aside — it rides with you across turns and battles until spoken.</p>
-      <p class="small" style="margin-top:6px"><b>Vessels (bobbins):</b> every Weaver sets out knowing all ten roots, with
-      three root vessels wound and riding. A wound vessel speaks its part as one block; speaking <b>empties</b> it, and you
-      wind it anew by feeding it letters from your pile — any pace, across turns and battles. An empty vessel can instead be
+      <p class="small" style="margin-top:6px"><b>Elements & the loom-school:</b> your grimoire holds <b>elements</b>, and
+      each arrives whole — root, suffixes, binder, late spelling, all inscribed the moment it is discovered. Five are known
+      from the first stitch; the rest are met on the road, as spoils and strange encounters. Each run <b>attunes three</b>
+      of your discovered elements, and only attuned words speak. The school has <b>four tiers</b> — Apprentice (words to 8
+      runes), Journeyman (10), Artisan (12, and the elder roads), Loomwright (13, and the deepest secrets) — each unlocked
+      by beating the one below. A readable word longer than your tier can still be <b>overreached</b>, at improvised power.</p>
+      <p class="small" style="margin-top:6px"><b>Vessels (bobbins):</b> your three attuned elements' root vessels set out
+      wound and riding. A wound vessel speaks its part as one block; speaking <b>empties</b> it, and you wind it anew by
+      feeding it letters from your pile — any pace, across turns and battles. An empty vessel can instead be
       <b>aimed at any part you know</b> (the apocrypha included, if you hold them) and captures it once you wind its letters
       three full times. You own up to ${Loom.BOBBIN_INVENTORY}; ${Loom.BOBBIN_ACTIVE} ride the frame at once, chosen between
       battles. Battles and road events offer more vessels and shuttle notches — and a free notch can be unspooled into a
       spare vessel. Foes cannot touch them.</p>
-      <p class="small dim" style="margin-top:6px">Your grimoire records <b>notes</b> — these rules and parts — not words.
-      A word casts at full strength once every part it uses is in your notes; otherwise it can be improvised at half power —
-      and the speaking itself teaches: any true word you improvise, or offer as a mystery guess, inscribes its unknown parts.
+      <p class="small dim" style="margin-top:6px">This is a school of <b>mastery, not archaeology</b>: the mystery word is
+      always drawn from your own notes, so solving it is craft — a ×1.5 casting and an uncut rune — never a blind hunt.
       The loom never points at words: it only <b>senses</b> the length of the longest word waiting in your tiles
       (your Weaver decides how far that sense reaches, and the Ribbon Index stretches it). Every word is spelled by hand.
-      Deep lengths must be unlocked before the mystery word will come that long. And the road-books say the grammar keeps
-      older secrets than any of this.</p>`;
+      And the road-books say the grammar keeps older secrets than any of this — the elder roads open at Artisan.</p>`;
     const back = el('button', null, '← Back');
     back.style.marginTop = '14px';
     back.onclick = renderTitle;
@@ -1192,9 +1267,15 @@
   /* Some words are older than the grammar. */
   const SECRETS = {
     WORDSMITH: () => {
-      Morph.PART_IDS.forEach(pid => meta.parts.add(pid));
+      Morph.ELEMENTS.forEach(e => meta.elements.add(e.id));
+      Loom.syncMeta(meta);
       LoomSave.save(meta);
-      return `✒️ The whole grammar unfurls — every note inscribes itself. ${Morph.PART_IDS.length}/${Morph.PART_IDS.length}.`;
+      return '✒️ Every element unfurls — all ten sing in your grimoire, every part of them.';
+    },
+    LOOMWRIGHT: () => {
+      meta.diff = 4;
+      LoomSave.save(meta);
+      return '🪡 The loom-school opens every door — all four tiers stand unlocked.';
     },
     APOCRYPHA: () => {
       Morph.SECRET_IDS.forEach(id => meta.secrets.add(id));
@@ -1205,11 +1286,14 @@
     },
     RESETTIA: () => {
       const blank = LoomSave.fresh();
+      meta.elements = blank.elements;
+      meta.diff = 1;
       meta.parts = blank.parts;
       meta.solved = blank.solved;
       meta.secrets = blank.secrets;
+      Loom.syncMeta(meta);
       LoomSave.save(meta);
-      return '🕯 The ink lifts from every page. Only the first stitches remain — 5/' + Morph.PART_IDS.length + '.';
+      return '🕯 The ink lifts from every page. The five first elements remain, and the school begins again.';
     },
   };
 
@@ -1324,16 +1408,16 @@
     LoomSave.save(meta);
     if (window.GLBG) GLBG.setMood(victory ? 'victory' : 'title');
     if (victory && window.FX && FX.confetti) FX.confetti();
-    const gained = meta.parts.size - run.startNotes;
+    const discovered = run.discovered.map(id => Morph.EL_BY_ID[id]);
     const secretsGained = meta.secrets.size - run.startSecrets;
-    const readable = Morph.readableCount(Loom.knowSet(meta));
     $screen.innerHTML = `
       <div class="title-wrap">
         <h1>${victory ? '🏆 THE ILLITERATE IS UNWRITTEN' : '🕯 Your ink runs dry'}</h1>
-        <p class="title-sub">${victory ? 'Three worlds read. The loom hums your name.' : 'But nothing learned is ever lost.'}</p>
-        <p><b>${gained}</b> new note${gained === 1 ? '' : 's'} inscribed · <b>${meta.parts.size}</b>/${Morph.PART_IDS.length} notes, reading <b>${readable}</b>/${Morph.VISIBLE.length} words</p>
+        <p class="title-sub">${victory ? 'Three worlds read. The loom hums your name.' : 'But nothing discovered is ever lost.'}</p>
+        ${discovered.length ? `<p>Elements discovered: <b>${discovered.map(e => e.icon + ' ' + e.name).join(' · ')}</b> — in your grimoire forever, every part of them.</p>` : ''}
+        <p class="small">🌳 <b>${meta.elements.size}</b>/${Morph.ELEMENTS.length} elements in the grimoire</p>
         ${secretsGained > 0 ? `<p class="small" style="color:var(--arc)">…and ${secretsGained} thing${secretsGained > 1 ? 's' : ''} the grimoire does not speak of.</p>` : ''}
-        <p class="small dim" style="margin-top:6px">Every note makes the next run stronger — and the mystery words longer.</p>
+        ${victory && run.unlockedDiff ? `<p style="color:var(--good)">🪡 A new tier of the loom-school opens: <b>${Loom.DIFF_BY_ID[run.unlockedDiff].icon} ${Loom.DIFF_BY_ID[run.unlockedDiff].name}</b>.</p>` : ''}
       </div>`;
     const again = el('button', 'arcane', '⚔ Weave again');
     again.style.cssText = 'display:block;margin:0 auto;font-size:17px;padding:10px 28px';
@@ -1382,8 +1466,8 @@
       get run() { return run; },
       get battle() { return battle; },
       get meta() { return meta; },
-      learnAll() { Morph.PART_IDS.forEach(pid => meta.parts.add(pid)); LoomSave.save(meta); hud(); },
-      learnSome(n) { Morph.PART_IDS.slice(0, n).forEach(pid => meta.parts.add(pid)); LoomSave.save(meta); hud(); },
+      learnAll() { Morph.ELEMENTS.forEach(e => meta.elements.add(e.id)); Loom.syncMeta(meta); if (run) Morph.ELEMENTS.forEach(e => run.elements.add(e.id)); LoomSave.save(meta); hud(); },
+      setDiff(n) { meta.diff = Math.min(4, Math.max(1, n)); LoomSave.save(meta); hud(); },
       teachSecrets() { Morph.SECRET_IDS.forEach(id => meta.secrets.add(id)); LoomSave.save(meta); hud(); },
       winBattle() { if (battle) { battle.foes.forEach(f => f.hp = 0); battle.over = true; battle.won = true; battleWon(); } },
       rerender() { if (battle) renderBattle(); },

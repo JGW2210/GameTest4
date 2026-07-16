@@ -22,7 +22,7 @@
       tagline: 'Fluent. The loom-sense feels words at ANY length — but the tray holds only 11 tiles.',
       desc: 'Feels the whole language at a glance. Spells it with cramped, impatient fingers.',
       hp: 46, tray: 11, chipMax: 99, power: 1,
-      unlock: { notes: 20 }, unlockText: 'Hold 20 grimoire notes to unlock',
+      unlock: { elements: 7 }, unlockText: 'Discover 7 elements to unlock',
     },
     {
       id: 'cantor', name: 'The Cantor', icon: '⚔️',
@@ -38,7 +38,7 @@
   function classUnlocked(cls, meta) {
     if (!cls.unlock) return true;
     if (!meta) return false;
-    if (cls.unlock.notes) return meta.parts.size >= cls.unlock.notes;
+    if (cls.unlock.elements) return (meta.elements ? meta.elements.size : 0) >= cls.unlock.elements;
     if (cls.unlock.wins) return meta.wins >= cls.unlock.wins;
     return false;
   }

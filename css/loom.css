@@ -243,6 +243,14 @@ button.quiet { background: none; border-color: transparent; text-decoration: und
 }
 .len-pill.selected { background: linear-gradient(180deg, #5b3fa8, #3a2470); color: #efe6ff; border-color: #8a6fd8; }
 .len-pill.locked { opacity: 0.35; cursor: default; border-style: dashed; }
+.len-pill.diff-pill { min-width: 110px; padding: 6px 10px; }
+
+/* run prep: the element pick */
+.offer.element-pick { width: 168px; padding: 10px; }
+.offer.element-pick.picked-el {
+  border-color: var(--arc); background: rgba(123,79,216,0.09);
+  box-shadow: 0 0 12px rgba(123,79,216,0.3);
+}
 
 .mtile.blur { background: repeating-linear-gradient(45deg, #b9ad93, #b9ad93 4px, #a99d84 4px, #a99d84 8px); color: #6a5f49; border-color: #8a744c; }
 

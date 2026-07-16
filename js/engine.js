@@ -53,7 +53,7 @@
   const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 
   const SOLVE_MULT = 1.5;
-  const IMPROV_MULT = 0.5;
+  const IMPROV_MULT = 0.5; // overreach: a word beyond the tier's cap
   // the breath: every word spoken in a turn tires the voice a little —
   // multi-casting is a choice with a cost, not a free sweep. LIVING
   // SPEECH breathes easier: a word spelled purely from letter tiles
@@ -78,15 +78,56 @@
   const BOBBIN_INVENTORY = 8;
   const CAPTURE_WINDS = 3;
   const VOWELS = 'AEIOU';
-  // the deep form notes never drop from ordinary study — elites, bosses and
-  // the elder roads hold them
-  const DEEP_FORMS = ['form:mirror', 'form:verse', 'form:sovereign', 'form:union', 'form:grandunion', 'form:weaveunion'];
-  const FREE_FORMS = ['cantrip', 'word', 'bound']; // guessable without their note
-
-  /* ---------------- knowledge ---------------- */
+  /* ---------------- the loom-school: four difficulties ----------------
+   * Each tier caps the LENGTH of words it has opened (longer words can
+   * still be OVERREACHED at improvised power) and scales the foes.
+   * Beating a tier unlocks the next. */
+  const DIFFICULTIES = [
+    { id: 1, name: 'Apprentice', icon: '🕯', cap: 8, scale: 0.7,
+      desc: 'Single-element words to 8 runes. A gentler road.' },
+    { id: 2, name: 'Journeyman', icon: '🖋', cap: 10, scale: 0.9,
+      desc: 'The Sovereigns open — words to 10 runes — and the road presses harder.' },
+    { id: 3, name: 'Artisan', icon: '🧵', cap: 12, scale: 1.2,
+      desc: 'The weddings open — blended words to 12 runes — and the elder roads appear.' },
+    { id: 4, name: 'Loomwright', icon: '🪡', cap: 13, scale: 1.5,
+      desc: 'The grand Woven Unions, the cruelest foes, and the deepest secrets of the tongue.' },
+  ];
+  const DIFF_BY_ID = {};
+  DIFFICULTIES.forEach(d => { DIFF_BY_ID[d.id] = d; });
+  // the roster: five elements are known from the first stitch. Each run
+  // ATTUNES three of the discovered elements; battles offer the rest.
+  const STARTER_ELEMENTS = ['ign', 'aqu', 'aer', 'san', 'ter'];
+  const RUN_ELEMENTS = 3;
+  /* ---------------- knowledge: elements carry their parts whole ---------------- */
   function knowSet(meta, sealed) {
     const s = new Set(meta.parts);
     for (const id of meta.secrets) s.add(id);
+    if (sealed) for (const id of sealed) s.delete(id);
+    return s;
+  }
+  // every part an element brings with it, in full — mastery of the rules,
+  // not note-by-note archaeology
+  function elementPartIds(elId) {
+    return ['root:' + elId, 'alt:' + elId, 'conn:' + elId,
+      'suf:' + elId + ':small', 'suf:' + elId + ':medium', 'suf:' + elId + ':large']
+      .filter(pid => Morph.PARTS[pid]);
+  }
+  // the universal grammar — centers, joiners, forms, rules — known to all
+  const UNIVERSAL_PARTS = Morph.PART_IDS.filter(pid => /^(center|join|form|rule):/.test(pid));
+  // materialize meta.parts from the discovered roster (union: merges keep)
+  function syncMeta(meta) {
+    if (!meta.elements) meta.elements = new Set(STARTER_ELEMENTS);
+    if (!meta.diff) meta.diff = 1;
+    for (const elId of meta.elements) for (const pid of elementPartIds(elId)) meta.parts.add(pid);
+    for (const pid of UNIVERSAL_PARTS) meta.parts.add(pid);
+    return meta;
+  }
+  // what THIS RUN reads: the attuned elements' parts, the universal
+  // grammar, and the secret knowledge — less whatever a foe has sealed
+  function runKnow(run, sealed) {
+    const s = new Set(UNIVERSAL_PARTS);
+    for (const elId of run.elements) for (const pid of elementPartIds(elId)) s.add(pid);
+    for (const id of run.meta.secrets) s.add(id);
     if (sealed) for (const id of sealed) s.delete(id);
     return s;
   }
@@ -165,7 +206,7 @@
     const lens = guessableLengths(run);
     serveMystery(b, run.flags.longmystery ? lens[Math.min(lens.length - 1, 1)] : lens[0]);
     run.flags.longmystery = false;
-    if (run.flags.revealNext) { revealLetter(b); run.flags.revealNext = false; }
+    if (run.flags.revealNext > 0) { revealLetter(b); run.flags.revealNext--; }
     b.turn = 1;
     return b;
   }
@@ -183,26 +224,37 @@
   function fxEmit(b, ev) { if (b.fxq) b.fxq.push(ev); }
   function drainFx(b) { const q = b.fxq || []; b.fxq = []; return q; }
 
-  /* ---------------- the mystery word & length choice ---------------- */
-  function unsolvedAt(meta, len, formsAllowed) {
-    return Morph.VISIBLE.filter(e => e.len === len && !meta.solved.has(e.word)
-      && (FREE_FORMS.includes(e.form) || formsAllowed.has('form:' + e.form)));
+  /* ---------------- the mystery word & length choice ----------------
+   * The mystery is drawn from YOUR NOTES: always a word the run can
+   * read, at a length the difficulty has opened. Solving is execution
+   * — a ×1.5 cast and an uncut rune — never blind archaeology. */
+  const MAX_LEN = 13; // the grand Woven Unions reach 13 runes
+  const diffCap = (run) => (DIFF_BY_ID[run.difficulty] || DIFFICULTIES[0]).cap;
+  function mysteryPool(run, len, sealed, allowSolved) {
+    const know = runKnow(run, sealed);
+    return Morph.VISIBLE.filter(e => e.len === len
+      && (allowSolved || !run.meta.solved.has(e.word))
+      && Morph.canRead(know, e));
   }
   // every length the player may currently REQUEST
-  const MAX_LEN = 13; // the grand Woven Unions reach 13 runes
   function guessableLengths(run) {
-    const formsAllowed = knowSet(run.meta);
-    const out = [];
-    for (let len = 4; len <= MAX_LEN; len++) {
-      if (unsolvedAt(run.meta, len, formsAllowed).length) out.push(len);
+    const cap = diffCap(run);
+    const know = runKnow(run);
+    const out = new Set();
+    for (const e of Morph.VISIBLE) {
+      if (e.len <= cap && !out.has(e.len) && Morph.canRead(know, e)) out.add(e.len);
     }
-    return out.length ? out : [4];
+    const lens = Array.from(out).sort((a, z) => a - z);
+    return lens.length ? lens : [4];
   }
 
   function serveMystery(b, len) {
-    const formsAllowed = knowSet(b.run.meta, b.sealedNotes);
-    let pool = unsolvedAt(b.run.meta, len, formsAllowed);
-    if (!pool.length) pool = Morph.VISIBLE.filter(e => !b.run.meta.solved.has(e.word) && FREE_FORMS.includes(e.form));
+    let pool = mysteryPool(b.run, len, b.sealedNotes, false);
+    if (!pool.length) pool = mysteryPool(b.run, len, b.sealedNotes, true);
+    if (!pool.length) {
+      const know = runKnow(b.run);
+      pool = Morph.VISIBLE.filter(e => e.len <= diffCap(b.run) && Morph.canRead(know, e));
+    }
     if (!pool.length) pool = Morph.VISIBLE;
     const e = pick(b.rng, pool);
     b.mystery = { answer: e.word, len: e.len, guesses: [], revealed: [] };
@@ -258,25 +310,6 @@
     return true;
   }
 
-  function inscribeParts(meta, entry) {
-    const fresh = [];
-    for (const pid of entry.parts) {
-      if (Morph.PARTS[pid] && !meta.parts.has(pid)) { meta.parts.add(pid); fresh.push(pid); }
-    }
-    return fresh;
-  }
-
-  // Speaking teaches — but never the deep form notes. Those come only
-  // from solving, elites, wardens, and the elder roads.
-  function inscribeSpokenParts(meta, entry) {
-    const fresh = [];
-    for (const pid of entry.parts) {
-      if (DEEP_FORMS.includes(pid)) continue;
-      if (Morph.PARTS[pid] && !meta.parts.has(pid)) { meta.parts.add(pid); fresh.push(pid); }
-    }
-    return fresh;
-  }
-
   function guess(b, raw) {
     if (!canGuess(b)) return { ok: false, reason: 'spent' };
     const g = String(raw || '').toUpperCase().replace(/[^A-Z]/g, '');
@@ -289,35 +322,19 @@
     const correct = g === m.answer;
     if (correct) {
       const word = m.answer;
-      const entry = Morph.WORDS[word];
       b.run.meta.solved.add(word);
       b.stats.solves++;
-      const fresh = inscribeParts(b.run.meta, entry);
-      b.stats.notes.push(...fresh);
-      say(b, `🌟 <b>${word}</b> — spoken true!`);
-      fxEmit(b, { type: 'solved', word, notes: fresh.length });
-      if (fresh.length) say(b, `✒️ New notes: <b>${fresh.map(pid => Morph.PARTS[pid].title).join(' · ')}</b> — yours forever.`);
-      else say(b, '✒️ Its grammar was already yours — the solving was pure craft.');
+      say(b, `🌟 <b>${word}</b> — spoken true! The solving is pure craft.`);
+      fxEmit(b, { type: 'solved', word });
       const fat = spokenMult(b);
       if (fat < 1) say(b, `🌬 Your breath is short — the solving carries ×${fat} of its force.`);
       castWordFx(b, word, SOLVE_MULT * fat, 'solved');
       b.fatigue += FATIGUE_PURE; // a solve is living speech
       mintBlank(b);
       if (!b.over) serveMystery(b, m.len);
-      return { ok: true, correct: true, marks, notes: fresh };
+      return { ok: true, correct: true, marks };
     }
-    // even a WRONG guess teaches: if it is a true word of the loom-tongue
-    // whose grammar is not yet in the notes, the speaking inscribes it
-    const spoken = Morph.WORDS[g];
-    let fresh = [];
-    if (spoken) {
-      fresh = inscribeSpokenParts(b.run.meta, spoken);
-      if (fresh.length) {
-        b.stats.notes.push(...fresh);
-        say(b, `✒️ <b>${g}</b> was not the mystery — but it IS a word, and its grammar inscribes itself: <b>${fresh.map(pid => Morph.PARTS[pid].title).join(' · ')}</b>.`);
-      }
-    }
-    return { ok: true, correct: false, marks, notes: fresh };
+    return { ok: true, correct: false, marks };
   }
 
   function revealLetter(b) {
@@ -536,8 +553,8 @@
   // Retained for the balance simulator's autoplayer ONLY: the UI no
   // longer surfaces found words — players spell everything by hand.
   function spellableWords(b) {
-    const know = knowSet(b.run.meta, b.sealedNotes);
-    const cap = chipMax(b.run);
+    const know = runKnow(b.run, b.sealedNotes);
+    const cap = Math.min(chipMax(b.run), diffCap(b.run));
     const out = [];
     for (const e of Morph.VISIBLE) {
       if (e.len > cap) continue;
@@ -603,6 +620,12 @@
     word = String(word || '').toUpperCase();
     const entry = Morph.WORDS[word];
     if (!entry) return { ok: false, reason: 'not-a-word' };
+    // mastery, not archaeology: only readable words — attuned elements,
+    // known grammar — may be spoken at all. Words beyond the tier's
+    // length cap can still be OVERREACHED, at improvised power.
+    const know = runKnow(b.run, b.sealedNotes);
+    if (!Morph.canRead(know, entry)) return { ok: false, reason: 'unread' };
+    const within = entry.len <= diffCap(b.run);
     // the hidden words must be spelled true — no uncut rune may shape them
     let pieces;
     if (picks && picks.length) {
@@ -614,8 +637,6 @@
       if (!pieces) return { ok: false, reason: entry.hidden && canSpell(b, word) ? 'true-spelling' : 'tiles' };
     }
     const tiles = pieces.tiles;
-    const know = knowSet(b.run.meta, b.sealedNotes);
-    const readable = Morph.canRead(know, entry);
     const blanksSpent = tiles.filter(t => t.blank).length;
     for (const t of tiles) {
       const ti = b.tray.indexOf(t);
@@ -633,23 +654,18 @@
     }
     const assisted = blanksSpent > 0 || pieces.bobbins.length > 0;
     const fat = spokenMult(b);
-    if (readable) { b.stats.casts++; castWordFx(b, word, fat, 'cast'); }
+    if (within) { b.stats.casts++; castWordFx(b, word, fat, 'cast'); }
     else {
+      // OVERREACH: the word is readable but longer than this tier has
+      // opened — it can be spoken, at improvised power
       b.stats.improvs++;
       const improv = Math.round((IMPROV_MULT + (b.run.perks.whetstone ? 0.2 : 0)) * fat * 100) / 100;
-      say(b, `〰 You improvise <b>${word}</b> — its grammar escapes you (×${improv}).`);
-      // spelling a word you cannot yet read still teaches its grammar:
-      // the unknown parts inscribe themselves (the cast stays improvised)
-      const fresh = inscribeSpokenParts(b.run.meta, entry);
-      if (fresh.length) {
-        b.stats.notes.push(...fresh);
-        say(b, `✒️ The speaking teaches: <b>${fresh.map(pid => Morph.PARTS[pid].title).join(' · ')}</b> — yours forever.`);
-      }
+      say(b, `〰 You overreach — <b>${word}</b> runs longer than your tier has opened (×${improv}).`);
       castWordFx(b, word, improv, 'improvised');
     }
     // living speech breathes easier than assisted speech
     b.fatigue += assisted ? FATIGUE_ASSISTED : FATIGUE_PURE;
-    return { ok: true, inscribed: readable };
+    return { ok: true, overreached: !within };
   }
 
   function elemMult(foe, elId) {
@@ -1009,14 +1025,28 @@
   }
 
   /* ---------------- the run: 3 worlds × 4 stages, branching ---------------- */
-  function newRun(seed, meta, clsId) {
+  function newRun(seed, meta, clsId, opts) {
+    syncMeta(meta);
+    opts = opts || {};
     meta.elderDrought = (meta.elderDrought || 0) + 1;
     const rng = makeRng(seed);
     const cls = Weavers.BY_ID[clsId] || Weavers.CLASSES[0];
+    const difficulty = Math.min(Math.max(1, opts.difficulty || 1), DIFFICULTIES.length);
+    // the run attunes three of the discovered elements
+    let chosen = (opts.elements || []).filter(id => meta.elements.has(id)).slice(0, RUN_ELEMENTS);
+    if (chosen.length < RUN_ELEMENTS) {
+      for (const id of meta.elements) {
+        if (chosen.length >= RUN_ELEMENTS) break;
+        if (!chosen.includes(id)) chosen.push(id);
+      }
+    }
     const bag = {};
     for (const ch in Morph.LETTER_WEIGHTS) bag[ch] = Morph.LETTER_WEIGHTS[ch];
     const run = {
       rng, meta, seed, cls,
+      difficulty,
+      elements: new Set(chosen), // attuned this run
+      discovered: [],            // elements met for the FIRST time this run
       hp: cls.hp, maxHp: cls.hp,
       traySize: cls.tray,
       bag,
@@ -1027,15 +1057,14 @@
       perks: {},
       flags: {},
       worldIdx: 0, stageIdx: 0,
-      worlds: buildWorlds(rng, meta),
+      worlds: buildWorlds(rng, meta, difficulty),
       over: false, victory: false,
-      startNotes: meta.parts.size,
+      startElements: chosen.slice(),
       startSecrets: meta.secrets.size,
     };
-    // every Weaver sets out with three root vessels, wound and riding
-    const els = Morph.ELEMENTS.slice();
-    for (let i = 0; i < 3 && els.length; i++) {
-      const el = els.splice(Math.floor(rng() * els.length), 1)[0];
+    // the attuned elements' root vessels set out wound and riding
+    for (const elId of chosen) {
+      const el = Morph.EL_BY_ID[elId];
       const v = makeVessel(el.root, el.icon, true);
       v.active = true;
       run.bobbins.push(v);
@@ -1050,11 +1079,13 @@
   // pity: after this many runs without committing an elder page to
   // memory, the next run's first eligible world is guaranteed one
   const ELDER_PITY = 3;
-  function buildWorlds(rng, meta) {
+  function buildWorlds(rng, meta, diff) {
     let pitySpent = false;
     return Foes.WORLDS.map((w, wi) => {
-      const untaught = LoomEvents.SECRET_EVENTS.filter(ev =>
-        !meta.secrets.has(ev.teaches) && (!ev.deep || wi === 2));
+      // the elder roads open only at Artisan; the deepest pages only to
+      // a Loomwright, and only in the Ruins
+      const untaught = (diff || 1) >= 3 ? LoomEvents.SECRET_EVENTS.filter(ev =>
+        !meta.secrets.has(ev.teaches) && (!ev.deep || ((diff || 1) >= 4 && wi === 2))) : [];
       const stages = [];
       stages.push([{ type: 'battle' }]);
       const pity = !pitySpent && untaught.length && (meta.elderDrought || 0) >= ELDER_PITY;
@@ -1078,7 +1109,16 @@
     if (run.stageIdx >= 4) {
       run.worldIdx++;
       run.stageIdx = 0;
-      if (run.worldIdx >= run.worlds.length) { run.over = true; run.victory = true; return 'victory'; }
+      if (run.worldIdx >= run.worlds.length) {
+        run.over = true; run.victory = true;
+        // beating your highest tier unlocks the next
+        const m = run.meta;
+        if (run.difficulty >= (m.diff || 1) && (m.diff || 1) < DIFFICULTIES.length) {
+          m.diff = Math.min(DIFFICULTIES.length, run.difficulty + 1);
+          run.unlockedDiff = m.diff;
+        }
+        return 'victory';
+      }
       run.hp = Math.min(run.maxHp, run.hp + Math.round((run.maxHp - run.hp) * 0.5));
       return 'world';
     }
@@ -1087,7 +1127,7 @@
 
   function battleForNode(run, node) {
     const w = run.worlds[run.worldIdx].def;
-    const scale = Foes.SCALE(globalStageIdx(run));
+    const scale = Foes.SCALE(globalStageIdx(run)) * (DIFF_BY_ID[run.difficulty] || DIFFICULTIES[0]).scale;
     let ids;
     if (node.type === 'boss') ids = [w.boss];
     else if (node.type === 'elite') ids = run.worldIdx === 0
@@ -1109,14 +1149,14 @@
     const held = new Set((run.bobbins || []).map(x => x.seq).filter(Boolean));
     const out = [];
     for (const el of Morph.ELEMENTS) {
-      if (run.meta.parts.has('root:' + el.id) && !held.has(el.root))
+      if (!run.elements.has(el.id)) continue; // only the attuned elements' parts
+      if (!held.has(el.root))
         out.push({ seq: el.root, icon: el.icon, label: `${el.root} — the ${el.name} root` });
-      if (run.meta.parts.has('alt:' + el.id) && !held.has(el.alt))
+      if (!held.has(el.alt) && diffCap(run) >= 11)
         out.push({ seq: el.alt, icon: el.icon, label: `${el.alt} — ${el.name}'s late spelling, the key to its blends` });
     }
     for (const c of Morph.CENTERS) {
-      if (run.meta.parts.has('center:' + c.id) && !held.has(c.seq))
-        out.push({ seq: c.seq, icon: c.icon, label: `${c.seq} — ${c.name}` });
+      if (!held.has(c.seq)) out.push({ seq: c.seq, icon: c.icon, label: `${c.seq} — ${c.name}` });
     }
     return out;
   }
@@ -1129,26 +1169,30 @@
     return v;
   }
 
-  function missingDeepForms(meta) { return DEEP_FORMS.filter(pid => !meta.parts.has(pid)); }
-  function studyPool(run) {
-    return Morph.VISIBLE.filter(e =>
-      !run.meta.solved.has(e.word) &&
-      e.parts.some(pid => !run.meta.parts.has(pid)) &&
-      !e.parts.some(pid => DEEP_FORMS.includes(pid) && !run.meta.parts.has(pid)));
+  /* elements a battle may offer: ATTUNE a discovered-but-dormant one for
+   * this run, or DISCOVER a new one — permanent, its full grammar
+   * inscribed at once */
+  function elementOffers(run) {
+    const out = [];
+    for (const el of Morph.ELEMENTS) {
+      if (run.elements.has(el.id)) continue;
+      const discovered = run.meta.elements.has(el.id);
+      out.push({ kind: 'element', el: el.id, rare: !discovered,
+        title: `${discovered ? 'Attune' : 'Discover'} ${el.name} ${el.icon}`,
+        desc: `${el.identity} ${discovered
+          ? 'Already in your grimoire — its words open to your loom this run.'
+          : 'New to your grimoire: its full grammar inscribes itself, forever, and its words open this run.'}` });
+    }
+    return out;
   }
 
   function rollRewards(run, node) {
     const offers = [];
-    const pool = studyPool(run);
-    if (pool.length) {
-      const w = pick(run.rng, pool);
-      const fresh = w.parts.filter(pid => !run.meta.parts.has(pid));
-      offers.push({ kind: 'study', word: w.word, title: `Study ${w.word}`,
-        desc: `${w.name} — ${w.desc}. Inscribes: ${fresh.map(pid => Morph.PARTS[pid].title.split(' — ')[0]).join(', ')}.` });
-    }
+    const els = elementOffers(run);
+    if (els.length) offers.push(els[Math.floor(run.rng() * els.length)]);
     offers.push({ kind: 'mend', title: 'Mend', desc: 'Recover 14 ink.' });
     if (run.traySize < 16) offers.push({ kind: 'loom', title: 'Widen the Loom', desc: '+1 tile in your tray, this run.' });
-    const el = pick(run.rng, Morph.ELEMENTS);
+    const el = Morph.EL_BY_ID[pick(run.rng, Array.from(run.elements))] || pick(run.rng, Morph.ELEMENTS);
     offers.push({ kind: 'infuse', el: el.id, title: `Infuse ${el.name}`, desc: `Season your letter bag toward ${el.root}-words (${el.icon}).` });
     if ((run.perks.ribbon || 0) < 4 && chipMax(run) < MAX_LEN)
       offers.push({ kind: 'ribbon', title: 'Ribbon Index', desc: `Your loom-sense reaches one rune further (now feels words to ${chipMax(run) + 1} runes).` });
@@ -1168,11 +1212,16 @@
     offers.push({ kind: 'vial', title: 'Ink Vial', desc: '+6 utmost ink, and mend that much.' });
 
     const out = [];
-    const deep = missingDeepForms(run.meta);
-    if ((node.type === 'elite' || node.type === 'boss') && deep.length) {
-      const pid = deep[0];
-      out.push({ kind: 'formnote', pid, title: Morph.PARTS[pid].title,
-        desc: `${Morph.PARTS[pid].note} Opens its lengths to guessing.`, rare: true });
+    // elites and wardens always hold an element — a new one if any remain
+    if (node.type === 'elite' || node.type === 'boss') {
+      const fresh = els.filter(o => o.rare);
+      const offer = fresh.length ? fresh[Math.floor(run.rng() * fresh.length)]
+        : els.length ? els[Math.floor(run.rng() * els.length)] : null;
+      if (offer) {
+        out.push(offer);
+        const i = offers.indexOf(offer);
+        if (i >= 0) offers.splice(i, 1);
+      }
     }
     while (out.length < 3 && offers.length) out.push(offers.splice(Math.floor(run.rng() * offers.length), 1)[0]);
     return out;
@@ -1180,11 +1229,18 @@
 
   function applyReward(run, offer) {
     switch (offer.kind) {
-      case 'study': {
-        const entry = Morph.WORDS[offer.word];
-        const fresh = inscribeParts(run.meta, entry);
-        run.meta.solved.add(offer.word);
-        return fresh.length ? `${fresh.length} note${fresh.length > 1 ? 's' : ''} inscribed from ${offer.word}.` : `${offer.word} studied.`;
+      case 'element': {
+        const el = Morph.EL_BY_ID[offer.el];
+        run.elements.add(el.id);
+        const fresh = !run.meta.elements.has(el.id);
+        if (fresh) {
+          run.meta.elements.add(el.id);
+          syncMeta(run.meta);
+          run.discovered.push(el.id);
+        }
+        return fresh
+          ? `${el.icon} ${el.name} enters your grimoire — every part of it, yours forever — and attunes to your loom.`
+          : `${el.icon} ${el.name} attunes to your loom for this run.`;
       }
       case 'mend': run.hp = Math.min(run.maxHp, run.hp + 14); return 'You mend 14.';
       case 'loom': run.traySize++; return 'Your loom widens.';
@@ -1209,9 +1265,8 @@
         run.bobbins.push(v);
         return 'An empty vessel joins your inventory — aim it at a part you know, and wind.';
       }
-      case 'whetstone': run.perks.whetstone = true; return 'Your improvisations sharpen.';
+      case 'whetstone': run.perks.whetstone = true; return 'Your overreaching sharpens.';
       case 'vial': run.maxHp += 6; run.hp = Math.min(run.maxHp, run.hp + 6); return 'Your inkwell deepens.';
-      case 'formnote': run.meta.parts.add(offer.pid); return `${Morph.PARTS[offer.pid].title} — inscribed. New lengths open to you.`;
     }
   }
 
@@ -1219,7 +1274,7 @@
   function campChoices(run) {
     return [
       { kind: 'rest', title: 'Rest', desc: 'Recover 40% of your missing ink.' },
-      { kind: 'reflect', title: 'Reflect', desc: 'Puzzle over the margins: one missing note reveals itself (the deep forms keep their own counsel).' },
+      { kind: 'reflect', title: 'Reflect', desc: 'Puzzle over the margins: your next three mysteries begin with a rune already revealed.' },
     ];
   }
   function applyCamp(run, choice) {
@@ -1228,11 +1283,8 @@
       run.hp += heal;
       return `You rest. +${heal} ink.`;
     }
-    const missing = Morph.PART_IDS.filter(pid => !run.meta.parts.has(pid) && !DEEP_FORMS.includes(pid));
-    if (!missing.length) { run.hp = Math.min(run.maxHp, run.hp + 8); return 'The grammar is complete — you doze instead (+8).'; }
-    const pid = pick(run.rng, missing);
-    run.meta.parts.add(pid);
-    return `In the quiet it comes to you: ${Morph.PARTS[pid].title} — noted.`;
+    run.flags.revealNext = (run.flags.revealNext || 0) + 3;
+    return 'You study the margins until the shapes swim — your next three mysteries begin lit.';
   }
 
   function rollEvent(run) { return pick(run.rng, LoomEvents.EVENTS); }
@@ -1244,7 +1296,7 @@
     if (fx.tray) { run.traySize += fx.tray; bits.push('the loom widens'); }
     if (fx.mulligans) { run.perks.mulligans = (run.perks.mulligans || 0) + fx.mulligans; bits.push('+1 sweep per battle'); }
     if (fx.vowelRich) { for (const v of 'AEIOU') run.bag[v] = Math.round(run.bag[v] * 1.5); bits.push('vowels run rich'); }
-    if (fx.revealNext) { run.flags.revealNext = true; bits.push('a rune will be revealed'); }
+    if (fx.revealNext) { run.flags.revealNext = (run.flags.revealNext || 0) + fx.revealNext; bits.push(`${fx.revealNext > 1 ? fx.revealNext + ' mysteries' : 'a mystery'} will begin lit`); }
     if (fx.curse === 'longmystery') { run.flags.longmystery = true; bits.push('the next mystery runs long'); }
     if (fx.bobbin) {
       const cands = bobbinCandidates(run);
@@ -1263,15 +1315,13 @@
       } else bits.push('the inventory is full — nothing gained');
     }
     if (fx.shuttleSlot) { run.perks.shuttle = (run.perks.shuttle || 0) + fx.shuttleSlot; bits.push('+1 shuttle notch'); }
-    if (fx.note) {
-      for (let i = 0; i < fx.note; i++) {
-        const missing = Morph.PART_IDS.filter(pid => !run.meta.parts.has(pid) && !DEEP_FORMS.includes(pid));
-        if (missing.length) {
-          const pid = pick(run.rng, missing);
-          run.meta.parts.add(pid);
-          bits.push(Morph.PARTS[pid].title);
-        }
-      }
+    if (fx.element) {
+      const els = elementOffers(run).filter(o => run.meta.elements.has(o.el));
+      const anyEls = els.length ? els : elementOffers(run);
+      if (anyEls.length) {
+        const o = pick(run.rng, anyEls);
+        bits.push(applyReward(run, o));
+      } else bits.push('every element already sings in your loom');
     }
     return bits.join(' · ') || 'Nothing changes, which is its own lesson.';
   }
@@ -1434,8 +1484,9 @@
 
   return {
     makeRng, pick,
-    SOLVE_MULT, IMPROV_MULT, DEEP_FORMS, FREE_FORMS,
-    knowSet, chipMax, MAX_LEN,
+    SOLVE_MULT, IMPROV_MULT,
+    knowSet, runKnow, syncMeta, elementPartIds, chipMax, MAX_LEN,
+    DIFFICULTIES, DIFF_BY_ID, diffCap, STARTER_ELEMENTS, RUN_ELEMENTS, elementOffers,
     createBattle, newRun, buildWorlds, battleForNode, currentStage, globalStageIdx, advance,
     guess, canGuess, useQuill, judge, serveMystery, chooseLength, guessableLengths, revealLetter,
     castWord, canSpell, tilesFor, spellableWords, mulligan, endTurn,
@@ -1449,7 +1500,7 @@
     rollRewards, applyReward, campChoices, applyCamp,
     rollEvent, applyEventChoice, applyElder,
     threadEncode, threadDecode, threadMerge,
-    refillTray, drawTile, inscribeParts, studyPool, missingDeepForms,
+    refillTray, drawTile,
     drainFx,
   };
 });

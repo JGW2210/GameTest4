@@ -1,43 +1,38 @@
 /* WORDLOOM — persistence. The grimoire survives every death.
- * v2: notes + secret knowledge + solved words; migrates v1 saves
- * (numbered form ids become named forms).
- * Fifth weaving: the ten element ROOTS are day-one knowledge — every
- * grimoire holds them, new or old. Discovery lies beyond the roots
- * (and beneath them: the elder spellings stay secret). */
+ * Sixth weaving: the grimoire tracks a roster of discovered ELEMENTS
+ * (each carrying its full grammar) and the highest DIFFICULTY unlocked.
+ * Five elements are known from the first stitch: fire, water, air,
+ * vitality, earth. meta.parts is materialized from the roster by the
+ * engine's syncMeta (main.js calls it right after load). */
 (function () {
-  const KEY = 'wordloom-meta-v2';
-  const OLD_KEY = 'wordloom-meta-v1';
-  const FORM_MIGRATE = {
-    'form:4': 'form:cantrip', 'form:5': 'form:word', 'form:6': 'form:bound',
-    'form:7': 'form:weave', 'form:8': 'form:mirror', 'form:9': 'form:verse',
-    'form:10': 'form:sovereign',
-  };
-
-  // the notes every grimoire is born holding: all ten roots, the two
-  // starter small suffixes, and the Cantrip form (so IGNA and SANA read)
-  function birthright() {
-    const parts = window.Morph.ELEMENTS.map(e => 'root:' + e.id);
-    return parts.concat(['suf:ign:small', 'suf:san:small', 'form:cantrip']);
-  }
+  const KEY = 'wordloom-meta-v3';
+  const OLD_KEYS = ['wordloom-meta-v2', 'wordloom-meta-v1'];
+  const STARTERS = ['ign', 'aqu', 'aer', 'san', 'ter'];
 
   function load() {
     try {
       let raw = localStorage.getItem(KEY);
       if (!raw) {
-        const old = localStorage.getItem(OLD_KEY);
-        if (old) {
+        // older saves: keep their secrets, solved words and tallies;
+        // the roster starts at the five, and a past win opens tier 2
+        for (const ok of OLD_KEYS) {
+          const old = localStorage.getItem(ok);
+          if (!old) continue;
           const d = JSON.parse(old);
           const meta = fresh();
-          for (const pid of (d.parts || [])) meta.parts.add(FORM_MIGRATE[pid] || pid);
+          for (const id of (d.secrets || [])) meta.secrets.add(id);
           for (const w of (d.solved || [])) meta.solved.add(w);
           meta.runs = d.runs || 0; meta.wins = d.wins || 0; meta.bestNode = d.bestNode || 0;
+          if (meta.wins > 0) meta.diff = 2;
           save(meta);
           return meta;
         }
         return fresh();
       }
       const d = JSON.parse(raw);
-      const meta = {
+      return {
+        elements: new Set(d.elements && d.elements.length ? d.elements : STARTERS),
+        diff: Math.min(4, Math.max(1, d.diff || 1)),
         parts: new Set(d.parts || []),
         secrets: new Set(d.secrets || []),
         solved: new Set(d.solved || []),
@@ -46,14 +41,14 @@
         wins: d.wins || 0,
         bestNode: d.bestNode || 0,
       };
-      for (const pid of birthright()) meta.parts.add(pid); // older saves gain the roots
-      return meta;
     } catch (e) { return fresh(); }
   }
 
   function fresh() {
     return {
-      parts: new Set(birthright()),
+      elements: new Set(STARTERS),
+      diff: 1,
+      parts: new Set(),
       secrets: new Set(),
       solved: new Set(['IGNA', 'SANA']),
       elderDrought: 0,
@@ -64,6 +59,8 @@
   function save(meta) {
     try {
       localStorage.setItem(KEY, JSON.stringify({
+        elements: Array.from(meta.elements || STARTERS),
+        diff: meta.diff || 1,
         parts: Array.from(meta.parts),
         secrets: Array.from(meta.secrets),
         solved: Array.from(meta.solved),
@@ -73,7 +70,7 @@
     } catch (e) { /* private mode */ }
   }
 
-  function wipe() { try { localStorage.removeItem(KEY); localStorage.removeItem(OLD_KEY); } catch (e) {} }
+  function wipe() { try { localStorage.removeItem(KEY); for (const k of OLD_KEYS) localStorage.removeItem(k); } catch (e) {} }
 
   window.LoomSave = { load, save, wipe, fresh };
 })();

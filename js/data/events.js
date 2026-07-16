@@ -33,8 +33,8 @@
       id: 'proofreader', icon: '🧐', title: 'The Blind Proofreader',
       text: '"I cannot see the words anymore," she says, "but I remember how they are MADE."',
       choices: [
-        { label: 'Listen', desc: 'She teaches you one note of the grammar you lack.', fx: { note: 1 } },
-        { label: 'Read to her', desc: 'She weeps. Recover 10 ink; the next mystery starts with a rune revealed.', fx: { heal: 10, revealNext: 1 } },
+        { label: 'Listen', desc: 'She attunes an element to your loom — a new one, if she knows any you do not.', fx: { element: 1 } },
+        { label: 'Read to her', desc: 'She weeps. Recover 10 ink; your next two mysteries start with a rune revealed.', fx: { heal: 10, revealNext: 2 } },
       ],
     },
     {
@@ -57,7 +57,7 @@
       id: 'palimpsest', icon: '📜', title: 'A Scraped Palimpsest',
       text: 'Beneath the visible text, an older hand. Beneath that hand, an older one still.',
       choices: [
-        { label: 'Scrape deeper', desc: 'Two notes of the grammar — but it costs 12 ink to breathe the dust.', fx: { hp: -12, note: 2 } },
+        { label: 'Scrape deeper', desc: 'An element stirs beneath the older hand — but it costs 12 ink to breathe the dust.', fx: { hp: -12, element: 1 } },
         { label: 'Leave it be', desc: 'Some pages want to stay buried. Recover 6 ink for your restraint.', fx: { heal: 6 } },
       ],
     },

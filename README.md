@@ -10,25 +10,25 @@ branch keeps it at `lexicon-arcanum/`).
 ## The idea
 
 The original game glued a deckbuilder to a word game. WORDLOOM removes the
-cards entirely — **words are both the puzzle and the arsenal**:
+cards entirely — **words are both the puzzle and the arsenal**, and the
+focus is **mastery of a written language's rules**, not discovery by
+brute force:
 
 - **ACQUIRE** — every turn you get one free guess at a **mystery word**
-  (wordle feedback: green/gold/grey). Solve it and it casts at ×1.5 — and
-  your grimoire gains **notes**: the rules and parts the word is built from
-  (its root, suffix, binder, center, form), **inscribed forever, across runs**.
-- **DEPLOY** — spell any **readable** word (one whose parts are all in your
-  notes) from your **loom of letter tiles**. Tiles are the only cost. Longer
-  words need more, rarer letters; that IS the mana curve.
+  (wordle feedback: green/gold/grey). The mystery is always drawn from
+  **your own notes** — a word you could read and cast — so solving it is
+  pure craft: it casts at ×1.5 and leaves an uncut rune on your loom.
+- **DEPLOY** — spell any **readable** word (one whose element is attuned
+  and whose parts are in your notes) from your **loom of letter tiles**.
+  Tiles are the only cost. Longer words need more, rarer letters; that
+  IS the mana curve.
 
-You never collect words. You collect the grammar: **85 notes read all 1,510
-visible words** — the ten element roots are day-one knowledge (the real
-discovery lies beyond them), so learn `-AS` and the A-binder from one lucky
-solve and you can suddenly read a dozen frost words you have never seen. And
-solving is not the only teacher: **speaking any true word of the tongue** —
-improvising it from your tiles, or offering it as a mystery guess, right or
-wrong — inscribes its unknown parts too (though never a deep form note — those keep
-their monopoly). Every rule of the language, including the laws of length,
-is logged under the grimoire's **rules** area.
+You collect **elements**, and each arrives whole: the moment one enters
+your grimoire, every part of it — root, suffixes, binder, late spelling —
+is inscribed at once, alongside the universal grammar (centers, joiners,
+forms, rules) every Weaver knows outright. Five elements are known from
+the first stitch: **fire, water, air, vitality, earth**. The other five
+are met on the road; the two unspoken ones only in the deepest school.
 
 There is no word list. The lexicon is **generated from a grammar** — 10
 element roots × 3 suffix sizes × 10 centers (short/standard/grand) × 10
@@ -46,6 +46,19 @@ Anything grammatical can also be **improvised** — spoken at half power without
 being learned — so understanding the language is itself a weapon.
 
 ## The run
+
+**The loom-school has four tiers**, each unlocked by beating the one
+below: 🕯 **Apprentice** (single-element words to 8 runes, gentler foes),
+🖋 **Journeyman** (the Sovereigns, to 10), 🧵 **Artisan** (the blends, to
+12 — and the elder roads appear), 🪡 **Loomwright** (the 13-rune Woven
+Unions, the unspoken elements, the cruelest foes). A readable word longer
+than your tier can still be **overreached** at improvised power.
+
+A run begins by **attuning three of your discovered elements** — they
+seed your loom, their root vessels ride out wound, and only attuned
+words speak. The rest of the roster (and elements you have never met)
+arrive as spoils: **elites and wardens always hold an element**, and a
+new element enters the grimoire **whole, forever**.
 
 **Three worlds × four branching stages** (~20 minutes): the Margins 📜, the
 Inkfen ☠️, the Scriptorium Ruins 🏛 — each with its own foes, elite, and
@@ -77,7 +90,7 @@ letters toward a long word is a plan, not a prayer (the Ivory Shuttle
 reward widens the rack).
 
 Knowledge becomes matter on the **vessels** (bobbins): every run opens
-with **three random root vessels**, wound and riding. A wound vessel
+with the **attuned trio's root vessels**, wound and riding. A wound vessel
 speaks its part — a root, a center, a late spelling — as one block in a
 word (one per word; two blocks tangle the thread). Speaking **empties**
 it: a vessel is a battery, rewound by feeding it letters from your pile,
@@ -90,51 +103,49 @@ vessels, and shuttle notches — and a free notch can be **unspooled**
 into a spare vessel. Foes cannot touch them, and offered vessels never
 carry the secret grammar: only its keeper's own hands may wind it.
 
-You **choose the mystery word's length**. Lengths beyond the basic forms
-unlock through their form notes — and the deep forms (Mirror, Verse,
-Sovereign, the Unions) never drop from ordinary study; only elites, wardens,
-and the elder roads hold them. The elder roads themselves are **rare**
-(roughly one world in five, with mercy after three dry runs), and there are
-now **18 secrets** to find: elder spellings, the two unspoken elements,
-three secret centers, a secret joiner, a secret form, and a secret rule —
-an apocryphal counterpart for every kind of word part. Once the first is
-held, the grimoire's Apocrypha page admits how many of each kind remain.
+You **choose the mystery word's length**, up to your tier's cap — the
+pool is always your own notes, so every solve is executable knowledge.
+The elder roads open at **Artisan** and stay **rare** (roughly one world
+in five, with mercy after three dry runs); the deepest pages wait for a
+Loomwright in the Ruins. There are **18 secrets** to find: elder
+spellings, the two unspoken elements, three secret centers, a secret
+joiner, a secret form, and a secret rule — an apocryphal counterpart for
+every kind of word part. Once the first is held, the grimoire's
+Apocrypha page admits how many of each kind remain.
 
 18 foes attack the *word game*, not just your ink: vowel leeches and tile
 thieves, rime wraiths, wisps that blur your wordle marks, lexicons that sap
 revealed runes, adaptive golems that calcify against your favorite element —
 and the Lexoleech, which **seals one of your grimoire notes** until it dies.
 
-Rewards: study, mend, widen the loom, infuse the bag, wound and spare
-vessels, Ribbon Index, Quill of Second Thoughts (an extra guess, once per
-battle), Whetstone (better improvisation), Ink Vial, Ivory Shuttle — and
-deep form notes from elites and wardens.
+Rewards: attune or discover an element, mend, widen the loom, infuse the
+bag, wound and spare vessels, Ribbon Index, Quill of Second Thoughts (an
+extra guess, once per battle), Whetstone (sharper overreach), Ink Vial,
+Ivory Shuttle.
 
-Death loses nothing that matters: **every note makes the next run
-stronger** — and pushes the mystery words longer, up to the 13-rune grand
-Woven Unions.
+Death loses nothing that matters: **every element discovered makes the
+next run's choice wider**, and the loom-school's tiers are held forever.
 
 Progress travels: the title page's **🧵 Weaver's Thread** spins your whole
 grimoire — notes, secrets, solved words, tallies — into one copyable code
 (a progress seed). Paste it into any other device's loom and it **merges**
 in: checksummed against typos, and knowledge is only ever gained, never
-lost.
+lost. (The thread still speaks the old dialect — element rosters and
+tiers ride it in the next weaving.)
 
 ## Balance snapshot
 
-`node tools/simulate.js 300` — scripted player on the shipped engine.
-(Speaking-teaches makes every run generous with notes — ~36 banked per fresh
-death — and the root birthright plus three starting vessels mean a fresh
-grimoire no longer flounders: it reaches stage 8 of 12 on average. The
-hidden grammar, 18 secrets behind rare elder doors, is the long game, and
-World 3 presses hard to hold the ceiling.)
+`node tools/simulate.js 300` — scripted player on the shipped engine,
+across the loom-school's tiers. (A first-time Apprentice wins roughly
+one run in two — the school's door is open — and each tier presses
+harder than the power it unlocks pays back.)
 
-| grimoire | win rate | note |
+| tier · roster | win rate | note |
 |---|---:|---|
-| fresh (13 notes: all roots) | ~14–19% | banks ~36 notes and ~0.4 secrets per run |
-| +16 notes | ~25% | |
-| +30 notes, Scrivener | ~28% | the Cantor reaches ~50% here |
-| full 85-note grammar | ~64% | ~78% with every secret, as the Cantor |
+| D1 Apprentice · 5 elements | ~42–54% | a first run reaches stage 10 of 12 on average |
+| D2 Journeyman · 7–10 elements | ~35% | |
+| D3 Artisan · full roster | ~35% | the Cantor reaches ~53%; elder pages begin |
+| D4 Loomwright · full + secrets | ~25–32% | the school's ceiling |
 
 ## Layout
 
