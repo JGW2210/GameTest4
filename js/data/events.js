@@ -38,6 +38,22 @@
       ],
     },
     {
+      id: 'turner', icon: '🪢', title: 'The Bobbin-Turner',
+      text: 'A lathe of black walnut, and a woman who speaks only in spirals. Her wares click softly against each other.',
+      choices: [
+        { label: 'Buy a wound vessel (pay 8 ink)', desc: 'A word-part from your notes, pre-wound and ready to speak.', fx: { hp: -8, bobbin: 1 } },
+        { label: 'Take a spare vessel', desc: 'An empty bobbin. Aim it at any part you know and wind its letters thrice to capture it.', fx: { vessel: 1 } },
+      ],
+    },
+    {
+      id: 'notcher', icon: '🧺', title: 'The Notcher of Frames',
+      text: 'He measures your loom\'s frame with a knotted cord, tutting at what he finds.',
+      choices: [
+        { label: 'Let him carve (pay 6 ink)', desc: '+1 shuttle notch — one more tile may ride with you.', fx: { hp: -6, shuttleSlot: 1 } },
+        { label: 'Decline politely', desc: 'Recover 8 ink. He leaves a card you cannot read.', fx: { heal: 8 } },
+      ],
+    },
+    {
       id: 'palimpsest', icon: '📜', title: 'A Scraped Palimpsest',
       text: 'Beneath the visible text, an older hand. Beneath that hand, an older one still.',
       choices: [

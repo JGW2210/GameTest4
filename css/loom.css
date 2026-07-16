@@ -453,11 +453,50 @@ body.gl-on #screen { box-shadow: 0 26px 70px rgba(0,0,0,0.75), inset 0 0 60px rg
 .bobbin-rack .tile.bobbin::after {
   content: '🪢'; position: absolute; font-size: 11px; top: -7px; right: -6px;
 }
-.bobbin-rack .tile.bobbin.exhausted {
-  opacity: 0.4; filter: grayscale(0.8); cursor: default;
+/* an unwound vessel: hollow letters show what it still hungers for */
+.tile.bobbin.winding {
   border-style: dashed; box-shadow: none;
+  background: linear-gradient(180deg, #efe6d2, #dfd2ae);
 }
-.bobbin-rack .tile.bobbin.exhausted:hover { transform: none; }
+.tile.bobbin .won { color: var(--ink); }
+.tile.bobbin .need { color: #b3a075; opacity: 0.55; }
+.tile.bobbin.capturing { border-color: var(--arc); box-shadow: 0 0 8px rgba(123,79,216,0.25); }
+.tile.bobbin .pass {
+  position: absolute; bottom: -8px; right: -6px;
+  font-size: 10px; background: var(--arc); color: #efe6ff;
+  border-radius: 8px; padding: 0 5px; letter-spacing: 0;
+}
+.tile.bobbin.blank-vessel {
+  border-style: dotted; color: #b3a075; box-shadow: none;
+  background: rgba(58,44,26,0.06); min-width: 44px;
+}
+
+/* the vessel inventory overlay */
+#vessel-overlay, #part-picker {
+  position: fixed; inset: 0; z-index: 44; background: rgba(20,15,8,0.6);
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+}
+.vessel-list { margin-top: 10px; }
+.vessel-row {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid #8a744c; border-radius: 8px; padding: 7px 10px; margin-top: 6px;
+  background: rgba(255,250,235,0.5); font-size: 13.5px;
+}
+.vessel-row.riding { border-color: var(--gold); box-shadow: 0 0 8px rgba(201,162,39,0.25); }
+.vessel-row .v-icon { font-size: 18px; }
+.vessel-row .v-state { flex: 1; }
+.vessel-row .v-state .mono, .vessel-row .v-state b { font-family: 'Courier New', monospace; }
+.vessel-row .v-btns { display: flex; gap: 4px; }
+.part-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px; margin-top: 10px; max-height: 50vh; overflow-y: auto;
+}
+#part-picker .blank-picker-inner { max-width: 640px; width: 100%; }
+.part-btn { text-align: left; padding: 6px 9px; font-size: 13px; }
+.part-btn .mono { font-family: 'Courier New', monospace; font-weight: bold; letter-spacing: 1px; }
+.part-btn.elder-part {
+  border-color: rgba(123,79,216,0.55); background: rgba(123,79,216,0.08); color: #4a3a6b;
+}
 
 .breath-note {
   margin: 4px auto 0; max-width: 420px; text-align: center;

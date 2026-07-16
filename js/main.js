@@ -175,6 +175,12 @@
             FX.burst(p.x, p.y, { count: 14, colors: ['#c9a2ff', '#8a6fd8', '#fff3b0'], speed: 3.5, size: 3 });
           }, 200);
           break;
+        case 'wind':
+          later(() => {
+            const p = centerOf(document.querySelector('.bobbin-rack') || document.querySelector('.tray'));
+            FX.burst(p.x, p.y, { count: Math.min(24, 6 * ev.n), colors: ['#c9a227', '#a97e1e', '#f4e6d0'], speed: 3, size: 3 });
+          }, 150);
+          break;
         case 'foeAct':
           later(() => {
             const art = document.getElementById('foe-art-' + ev.idx);
@@ -357,6 +363,10 @@
       row.appendChild(card);
     });
     $screen.appendChild(row);
+    const vesBtn = el('button', 'quiet', '🪢 vessels & loadout');
+    vesBtn.style.cssText = 'display:block;margin:14px auto 0';
+    vesBtn.onclick = renderVessels;
+    $screen.appendChild(vesBtn);
   }
 
   function enterNode(node) {
@@ -461,24 +471,12 @@
     for (let i = run.shuttle.length; i < Loom.shuttleCap(run); i++) rack.appendChild(el('div', 'tile slot-empty', '·'));
     loom.appendChild(rack);
 
-    // bobbins: pre-wound word-parts on the loom's frame
-    if (run.bobbins.length) {
+    // vessels riding the frame: wound ones speak; empty ones eat letters
+    const riding = Loom.activeVessels(run);
+    if (riding.length) {
       const brack = el('div', 'bobbin-rack');
-      brack.appendChild(el('span', 'shuttle-label', '🪢 bobbins'));
-      run.bobbins.forEach(bob => {
-        const node = el('div', 'tile bobbin' + (bob.used ? ' exhausted' : '') + (picked.includes(bob.id) ? ' used' : ''), bob.seq);
-        node.dataset.id = bob.id;
-        node.title = bob.used
-          ? 'Spoken this battle — it re-inks at the next.'
-          : `${bob.icon} Pre-wound thread: speaks ${bob.seq} as one block, once per battle.`;
-        if (!bob.used && !b.over) node.onclick = () => {
-          if (picked.includes(bob.id)) return;
-          picked.push(bob.id);
-          node.classList.remove('pop'); void node.offsetWidth; node.classList.add('pop');
-          refreshBuild();
-        };
-        brack.appendChild(node);
-      });
+      brack.appendChild(el('span', 'shuttle-label', '🪢 vessels'));
+      riding.forEach(v => brack.appendChild(vesselNode(v)));
       loom.appendChild(brack);
     }
     loom.appendChild(el('div', 'spell-build', ''));
@@ -520,16 +518,18 @@
     mullBtn.onclick = () => { if (Loom.mulligan(b)) { picked = []; renderBattle(); } };
     const guideBtn = el('button', null, '🪡 Notes');
     guideBtn.onclick = toggleGuideOverlay;
+    const vesBtn = el('button', null, '🪢 Vessels');
+    vesBtn.onclick = renderVessels;
     const endBtn = el('button', null, '⌛ End Turn');
     endBtn.id = 'end-turn';
     endBtn.onclick = () => { Loom.endTurn(b); picked = []; afterAction(); };
-    btns.append(castBtn, clearBtn, discBtn, shutBtn, mullBtn, guideBtn, endBtn);
+    btns.append(castBtn, clearBtn, discBtn, shutBtn, mullBtn, guideBtn, vesBtn, endBtn);
     loom.appendChild(btns);
 
     // the breath: every word spoken this turn tires the next one
-    if (!b.over && b.spokenThisTurn > 0) {
+    if (!b.over && b.fatigue > 0) {
       loom.appendChild(el('div', 'breath-note',
-        `🌬 breath: the next word carries ×${Loom.spokenMult(b)} — it returns when the turn ends`));
+        `🌬 breath: the next word carries ×${Loom.spokenMult(b)} — living speech tires it less, and it returns at turn's end`));
     }
 
     const speak = el('div', 'speakable');
@@ -756,6 +756,154 @@
       grid.appendChild(btn);
     }
     inner.appendChild(grid);
+    ov.appendChild(inner);
+    ov.onclick = (ev) => { if (ev.target === ov) ov.remove(); };
+    document.body.appendChild(ov);
+  }
+
+  /* ---- vessels: rack nodes, feeding, capture aiming, inventory ---- */
+  // seq letters with the still-needed ones hollowed out
+  function windProgress(v) {
+    const seq = Loom.windingSeq(v);
+    if (!seq) return '?';
+    let left = v.left;
+    return seq.split('').map(ch => {
+      const i = left.indexOf(ch);
+      if (i >= 0) { left = left.slice(0, i) + left.slice(i + 1); return `<span class="need">${ch}</span>`; }
+      return `<span class="won">${ch}</span>`;
+    }).join('');
+  }
+
+  function vesselNode(v) {
+    const b = battle;
+    let cls = 'tile bobbin', html, title;
+    if (v.wound) {
+      html = v.seq;
+      title = `${v.icon} Wound: speaks ${v.seq} as one block. Speaking empties it.`;
+      if (picked.includes(v.id)) cls += ' used';
+    } else if (Loom.windingSeq(v)) {
+      cls += ' winding' + (v.capSeq ? ' capturing' : '');
+      html = windProgress(v) + (v.capSeq ? `<span class="pass">${v.winds + 1}/${Loom.CAPTURE_WINDS}</span>` : '');
+      title = v.capSeq
+        ? `Capturing ${v.capSeq} — wind pass ${v.winds + 1} of ${Loom.CAPTURE_WINDS}. Pick letters, then click to feed it.`
+        : `Empty: feed it the hollow letters to wind ${v.seq} anew. Pick letters, then click it.`;
+    } else {
+      cls += ' blank-vessel';
+      html = '?';
+      title = 'A blank vessel. Click to aim it at any part you know — then wind its letters thrice to capture it.';
+    }
+    const node = el('div', cls, html);
+    node.dataset.id = v.id;
+    node.title = title;
+    if (b && !b.over) node.onclick = () => {
+      if (v.wound) {
+        if (picked.includes(v.id)) return;
+        picked.push(v.id);
+        node.classList.remove('pop'); void node.offsetWidth; node.classList.add('pop');
+        refreshBuild();
+      } else if (Loom.windingSeq(v)) {
+        const ids = picked.filter(id => { const t = tileById(id); return t && !t.seq; });
+        if (!ids.length) { toast('Pick letters from your loom first, then click the vessel to feed it.'); return; }
+        const r = Loom.feedVessel(b, v.id, ids);
+        if (!r.ok) { toast(r.reason === 'no-fit' ? 'None of those letters fit its hollow slots.' : 'The vessel refuses.'); return; }
+        picked = [];
+        afterAction();
+      } else {
+        renderPartPicker(v);
+      }
+    };
+    return node;
+  }
+
+  /* choose a part (from the notes — secrets included) for a vessel to capture */
+  function renderPartPicker(v) {
+    const old = document.getElementById('part-picker');
+    if (old) old.remove();
+    const parts = Loom.windableParts(meta);
+    const ov = el('div', null, '');
+    ov.id = 'part-picker';
+    const inner = el('div', 'blank-picker-inner');
+    inner.appendChild(el('div', 'small center', `🪢 Aim the vessel — wind the part's letters ${Loom.CAPTURE_WINDS} full times to capture it:`));
+    const grid = el('div', 'part-grid');
+    parts.forEach(p => {
+      const btn = el('button', 'part-btn' + (p.elder ? ' elder-part' : ''), `<span class="mono">${p.seq}</span> <span class="small">${p.icon} ${p.title}</span>`);
+      btn.onclick = () => {
+        Loom.startCapture(run, v.id, p.seq, p.icon);
+        ov.remove();
+        toast(`🪢 The vessel is aimed at <b>${p.seq}</b> — wind its letters ${Loom.CAPTURE_WINDS} times over.`, 3200);
+        if (battle) renderBattle(); else renderVessels();
+      };
+      grid.appendChild(btn);
+    });
+    if (!parts.length) inner.appendChild(el('div', 'small dim center', 'No windable parts in your notes yet.'));
+    inner.appendChild(grid);
+    const close = el('button', 'quiet', 'never mind');
+    close.style.cssText = 'display:block;margin:10px auto 0';
+    close.onclick = () => ov.remove();
+    inner.appendChild(close);
+    ov.appendChild(inner);
+    ov.onclick = (ev) => { if (ev.target === ov) ov.remove(); };
+    document.body.appendChild(ov);
+  }
+
+  /* the vessel inventory: loadout (locked mid-battle), captures, unspooling */
+  function renderVessels() {
+    const old = document.getElementById('vessel-overlay');
+    if (old) old.remove();
+    const inBattle = !!(battle && !battle.over);
+    const ov = el('div', null, '');
+    ov.id = 'vessel-overlay';
+    const inner = el('div', 'guide-inner');
+    inner.appendChild(el('h2', null, '🪢 Your Vessels'));
+    inner.appendChild(el('div', 'small dim', `${Loom.activeVessels(run).length}/${Loom.BOBBIN_ACTIVE} riding the frame · ${run.bobbins.length}/${Loom.BOBBIN_INVENTORY} owned` +
+      (inBattle ? ' · the loadout is locked while the page is hostile' : ' · click ⚡ to choose which ride')));
+    const list = el('div', 'vessel-list');
+    run.bobbins.forEach(v => {
+      const state = v.wound ? `wound — <b>${v.seq}</b> ready to speak`
+        : v.capSeq ? `capturing <b>${v.capSeq}</b> — pass ${v.winds + 1}/${Loom.CAPTURE_WINDS}, needs ${windProgress(v)}`
+        : v.seq ? `empty — winding <b>${v.seq}</b>, needs ${windProgress(v)}`
+        : 'a blank vessel — aim it at a part you know';
+      const row = el('div', 'vessel-row' + (v.active ? ' riding' : ''), `
+        <span class="v-icon">${v.icon}</span>
+        <span class="v-state">${state}</span>`);
+      const btns = el('span', 'v-btns');
+      const act = el('button', 'quiet', v.active ? '⚡ riding' : '· in the bag');
+      act.title = inBattle ? 'The loadout is locked during battle.' : (v.active ? 'Click to stow it' : 'Click to set it riding');
+      act.disabled = inBattle;
+      act.onclick = () => {
+        const r = Loom.setVesselActive(run, v.id, !v.active);
+        if (!r.ok && r.reason === 'full') { toast(`Only ${Loom.BOBBIN_ACTIVE} vessels may ride the frame.`); return; }
+        renderVessels();
+      };
+      btns.appendChild(act);
+      if (!v.wound) {
+        const aim = el('button', 'quiet', '🎯 aim');
+        aim.title = 'Capture a different part onto this vessel (secrets included). Resets its winding.';
+        aim.onclick = () => { ov.remove(); renderPartPicker(v); };
+        btns.appendChild(aim);
+      }
+      row.appendChild(btns);
+      list.appendChild(row);
+    });
+    if (!run.bobbins.length) list.appendChild(el('div', 'small dim', '— none yet —'));
+    inner.appendChild(list);
+    const canUnspool = Loom.shuttleCap(run) > run.shuttle.length && Loom.shuttleCap(run) > 0 && run.bobbins.length < Loom.BOBBIN_INVENTORY;
+    const un = el('button', null, '🧺→🪢 Unspool a shuttle notch into a spare vessel');
+    un.title = 'One-way: a free shuttle notch becomes an empty vessel to capture with.';
+    un.disabled = !canUnspool || inBattle;
+    un.style.cssText = 'display:block;margin:12px auto 0';
+    un.onclick = () => {
+      const r = Loom.unspoolShuttle(run);
+      if (!r.ok) { toast('No free notch to unspool.'); return; }
+      LoomSave.save(meta);
+      toast('🪢 The notch unspools into an empty vessel.');
+      renderVessels();
+    };
+    inner.appendChild(un);
+    const close = el('button', 'arcane', 'Back');
+    close.style.cssText = 'display:block;margin:12px auto 0';
+    close.onclick = () => { ov.remove(); if (battle) renderBattle(); };
+    inner.appendChild(close);
     ov.appendChild(inner);
     ov.onclick = (ev) => { if (ev.target === ov) ov.remove(); };
     document.body.appendChild(ov);
@@ -1016,12 +1164,18 @@
       ${Morph.CENTERS.map(c => `<span class="mono">${c.seq}</span> ${c.name}`).join(' · ')}.</p>
       <p class="small" style="margin-top:6px"><b>The Scribe's Elision:</b> twin vowels never touch — the second transmutes (A→E, E→A, I→E, O→U, U→O).
       <b>The Easing Vowel:</b> when a binder's consonant strikes another consonant, the element's small vowel eases the joint.</p>
-      <p class="small" style="margin-top:6px"><b>The breath:</b> every word spoken in a turn tires the voice — each after
-      the first carries 15% less (the breath returns when the turn ends). <b>Uncut runes:</b> solving a mystery leaves a
+      <p class="small" style="margin-top:6px"><b>The breath:</b> every word spoken in a turn tires the voice — <b>living
+      speech</b> (a word spelled purely from letter tiles) costs a tenth of your force; a word leaning on a blank or a
+      vessel costs a fifth. The breath returns when the turn ends. <b>Uncut runes:</b> solving a mystery leaves a
       blank tile ★ on your loom — shaped into any letter when spoken, spent forever, and never for the elder words.
-      <b>The shuttle:</b> once per turn, set one tile aside — it rides with you across turns and battles until spoken.
-      <b>Bobbins:</b> after a battle you may wind a note you hold — a root, a center, a late spelling — into pre-wound thread:
-      it speaks its letters as one block, once per battle, and re-inks between battles. Foes cannot touch it.</p>
+      <b>The shuttle:</b> once per turn, set one tile aside — it rides with you across turns and battles until spoken.</p>
+      <p class="small" style="margin-top:6px"><b>Vessels (bobbins):</b> every Weaver sets out knowing all ten roots, with
+      three root vessels wound and riding. A wound vessel speaks its part as one block; speaking <b>empties</b> it, and you
+      wind it anew by feeding it letters from your pile — any pace, across turns and battles. An empty vessel can instead be
+      <b>aimed at any part you know</b> (the apocrypha included, if you hold them) and captures it once you wind its letters
+      three full times. You own up to ${Loom.BOBBIN_INVENTORY}; ${Loom.BOBBIN_ACTIVE} ride the frame at once, chosen between
+      battles. Battles and road events offer more vessels and shuttle notches — and a free notch can be unspooled into a
+      spare vessel. Foes cannot touch them.</p>
       <p class="small dim" style="margin-top:6px">Your grimoire records <b>notes</b> — these rules and parts — not words.
       A word casts at full strength once every part it uses is in your notes; otherwise it can be improvised at half power —
       and the speaking itself teaches: any true word you improvise, or offer as a mystery guess, inscribes its unknown parts.

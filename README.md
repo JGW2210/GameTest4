@@ -21,8 +21,9 @@ cards entirely — **words are both the puzzle and the arsenal**:
   words need more, rarer letters; that IS the mana curve.
 
 You never collect words. You collect the grammar: **85 notes read all 1,510
-visible words** — learn `GEL`, `-AS`, and the A-binder from one lucky solve
-and you can suddenly read a dozen frost words you have never seen. And
+visible words** — the ten element roots are day-one knowledge (the real
+discovery lies beyond them), so learn `-AS` and the A-binder from one lucky
+solve and you can suddenly read a dozen frost words you have never seen. And
 solving is not the only teacher: **speaking any true word of the tongue** —
 improvising it from your tiles, or offering it as a mystery guess, right or
 wrong — inscribes its unknown parts too (though never a deep form note — those keep
@@ -63,24 +64,31 @@ and the loom warns you outright when it has gone **stale** (no word
 weavable at all).
 
 Speaking is no longer free-flowing: **the breath** tires with every word
-in a turn (each after the first carries −15%, floor ×0.4; it returns at
-turn's end) — so *what to speak first* is a real decision, and guessing
-before you cast keeps the solve at full force. The first **solve** of
-each battle leaves an **uncut rune** ★ on the loom: a blank tile shaped
-into any letter when spoken, spent forever, capped at two — and the elder
-words refuse it; they must be spelled true. And once per turn the
-**shuttle** sets a tile aside to ride with you **across turns and
-battles** — banking rare letters toward a long word is now a plan, not
-a prayer (the Ivory Shuttle reward widens the rack).
+in a turn, and **living speech breathes easiest** — a word spelled purely
+from letter tiles costs a tenth of your force, one leaning on a blank or
+a vessel a fifth (floor ×0.4; the breath returns at turn's end). So *what
+to speak first* is a real decision, and guessing before you cast keeps
+the solve at full force. The first **solve** of each battle leaves an
+**uncut rune** ★ on the loom: a blank tile shaped into any letter when
+spoken, spent forever, capped at two — and the elder words refuse it;
+they must be spelled true. Once per turn the **shuttle** sets a tile
+aside to ride with you **across turns and battles** — banking rare
+letters toward a long word is a plan, not a prayer (the Ivory Shuttle
+reward widens the rack).
 
-Knowledge can even become matter: after a battle you may **wind a
-bobbin** from a note you hold — a root, a center, a late spelling —
-turning it into **pre-wound thread** that speaks its letters as one
-block. One bobbin may speak per word (two blocks tangle the thread),
-once per battle each (they re-ink between battles), and the word
-carries ×0.85 — pre-wound thread is not living speech. Two ride the
-loom's frame at most, foes cannot touch them, and the secret grammar
-is never wound: secrets appear in no chip, note, or guide.
+Knowledge becomes matter on the **vessels** (bobbins): every run opens
+with **three random root vessels**, wound and riding. A wound vessel
+speaks its part — a root, a center, a late spelling — as one block in a
+word (one per word; two blocks tangle the thread). Speaking **empties**
+it: a vessel is a battery, rewound by feeding it letters from your pile,
+any pace, across turns and battles. An empty vessel can instead be
+**aimed at any part you know — the apocrypha included, if you hold
+them** — and captures it once you wind its letters three full times.
+You own up to eight; three ride the loom's frame at once, chosen
+between battles. Battles and road events offer wound vessels, spare
+vessels, and shuttle notches — and a free notch can be **unspooled**
+into a spare vessel. Foes cannot touch them, and offered vessels never
+carry the secret grammar: only its keeper's own hands may wind it.
 
 You **choose the mystery word's length**. Lengths beyond the basic forms
 unlock through their form notes — and the deep forms (Mirror, Verse,
@@ -97,10 +105,10 @@ thieves, rime wraiths, wisps that blur your wordle marks, lexicons that sap
 revealed runes, adaptive golems that calcify against your favorite element —
 and the Lexoleech, which **seals one of your grimoire notes** until it dies.
 
-Rewards: study, mend, widen the loom, infuse the bag, wind a bobbin,
-Ribbon Index, Quill of Second Thoughts (an extra guess, once per battle),
-Whetstone (better improvisation), Ink Vial, Ivory Shuttle — and deep form
-notes from elites and wardens.
+Rewards: study, mend, widen the loom, infuse the bag, wound and spare
+vessels, Ribbon Index, Quill of Second Thoughts (an extra guess, once per
+battle), Whetstone (better improvisation), Ink Vial, Ivory Shuttle — and
+deep form notes from elites and wardens.
 
 Death loses nothing that matters: **every note makes the next run
 stronger** — and pushes the mystery words longer, up to the 13-rune grand
@@ -115,19 +123,18 @@ lost.
 ## Balance snapshot
 
 `node tools/simulate.js 300` — scripted player on the shipped engine.
-(Speaking-teaches makes every run generous with notes — ~40 banked per fresh
-death — while per-run win rates keep the old shape; the hidden grammar, 18
-secrets behind rare elder doors, is the long game. The third weaving's
-uncut runes and shuttle soften the early sawtooth a little, bobbins pay
-out with the grimoire, and World 3 presses harder still to hold the
-ceiling.)
+(Speaking-teaches makes every run generous with notes — ~36 banked per fresh
+death — and the root birthright plus three starting vessels mean a fresh
+grimoire no longer flounders: it reaches stage 8 of 12 on average. The
+hidden grammar, 18 secrets behind rare elder doors, is the long game, and
+World 3 presses hard to hold the ceiling.)
 
 | grimoire | win rate | note |
 |---|---:|---|
-| fresh (5 starter notes) | ~9–15% | banks ~40 notes and ~0.4 secrets per run |
-| +16 notes | ~16% | |
-| +30 notes, Scrivener | ~17% | the Cantor reaches ~44% here |
-| full 85-note grammar | ~61% | ~74% with every secret, as the Cantor |
+| fresh (13 notes: all roots) | ~14–19% | banks ~36 notes and ~0.4 secrets per run |
+| +16 notes | ~25% | |
+| +30 notes, Scrivener | ~28% | the Cantor reaches ~50% here |
+| full 85-note grammar | ~64% | ~78% with every secret, as the Cantor |
 
 ## Layout
 

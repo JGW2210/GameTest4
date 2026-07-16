@@ -7,9 +7,13 @@ const Morph = require('../js/data/morphology.js');
 
 const RUNS = Number(process.argv[2]) || 300;
 
+// the birthright: all ten roots are day-one knowledge
+const BIRTHRIGHT = Morph.ELEMENTS.map(e => 'root:' + e.id)
+  .concat(['suf:ign:small', 'suf:san:small', 'form:cantrip']);
+
 function metaWith(rng, n, secrets) {
   const meta = {
-    parts: new Set(['root:ign', 'suf:ign:small', 'root:san', 'suf:san:small', 'form:cantrip']),
+    parts: new Set(BIRTHRIGHT),
     secrets: new Set(secrets || []),
     solved: new Set(['IGNA', 'SANA']),
     runs: 0, wins: 0, bestNode: 0,
@@ -81,7 +85,17 @@ function playBattle(b, rng, skill) {
         if (scored[0].v * Loom.spokenMult(b) > 2) { Loom.castWord(b, scored[0].e.word); cast = true; casts++; }
       }
     }
-    if (!b.over) Loom.endTurn(b);
+    if (b.over) break;
+    // wind empty vessels with leftover letters before ending the turn
+    for (const v of (b.run.bobbins || []).filter(v => v.active && !v.wound && v.seq && !v.capSeq)) {
+      const ids = [];
+      for (const ch of v.left) {
+        const t = b.tray.find(x => !x.frozen && !x.blank && x.ch === ch && !ids.includes(x.id));
+        if (t) ids.push(t.id);
+      }
+      if (ids.length) Loom.feedVessel(b, v.id, ids);
+    }
+    Loom.endTurn(b);
   }
   if (!b.over) { b.over = true; b.won = false; }
   return b.won;
@@ -130,7 +144,7 @@ function simulateRun(notes, skill, clsId, seed, secrets) {
 function config(label, notes, skill, clsId, secrets) {
   let wins = 0, stageSum = 0, notesGained = 0, secretsGained = 0;
   const deaths = new Array(13).fill(0);
-  const base = 5 + Math.min(notes, Morph.PART_IDS.length - 5);
+  const base = BIRTHRIGHT.length + Math.min(notes, Morph.PART_IDS.length - BIRTHRIGHT.length);
   for (let i = 0; i < RUNS; i++) {
     const r = simulateRun(notes, skill, clsId, 1000 + notes * 31 + i * 13, secrets);
     if (r.won) wins++; else deaths[r.stage]++;
@@ -142,8 +156,8 @@ function config(label, notes, skill, clsId, secrets) {
 }
 
 console.log(`\n=== WORDLOOM v2 balance (${RUNS} runs/config) — 3 worlds × 4 stages ===\n`);
-config('fresh (5 notes) scrivener, novice', 0, 0.04, 'scrivener');
-config('fresh (5 notes) scrivener, sharp', 0, 0.10, 'scrivener');
+config('fresh (13 notes, all roots) scriv, novice', 0, 0.04, 'scrivener');
+config('fresh (13 notes, all roots) scriv, sharp', 0, 0.10, 'scrivener');
 config('16 extra notes, scrivener, sharp', 16, 0.10, 'scrivener');
 config('30 extra notes, scrivener, sharp', 30, 0.10, 'scrivener');
 config('30 extra notes, lector, sharp', 30, 0.10, 'lector');

@@ -17,11 +17,20 @@
  * forever — never for hidden words), and THE SHUTTLE (set one tile
  * aside per turn; it rides across turns and battles until spoken).
  *
- * Fourth weaving: BOBBINS — pre-wound word-parts (roots, centers,
- * late spellings) drafted as rewards from notes the grimoire already
- * holds. A bobbin speaks its letters as one block, once per battle,
- * and re-inks between battles. Foes cannot touch them. The secret
- * grammar is never wound: secrets appear in no chip, note, or guide.
+ * Fourth weaving: BOBBINS — pre-wound word-parts spoken as blocks.
+ *
+ * Fifth weaving: the ten ROOTS are day-one knowledge, and every run
+ * opens with three root vessels wound. Bobbins are BATTERIES now:
+ * speaking one empties it, and it is rewound by feeding it letters
+ * from the pile (any pace, across turns and battles). An empty
+ * vessel can CAPTURE any part its keeper knows — secrets included —
+ * by winding its letters three full times. You own an inventory of
+ * vessels; three ride the frame at once, chosen between battles;
+ * rewards and road events grant more, and a free shuttle notch can
+ * be unspooled into a spare vessel. LIVING SPEECH: a word spelled
+ * purely from letters tires the breath half as much as one leaning
+ * on a blank or a bobbin. Offered vessels never carry the secret
+ * grammar — only its keeper's own hands may wind it.
  * ============================================================ */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -46,8 +55,11 @@
   const SOLVE_MULT = 1.5;
   const IMPROV_MULT = 0.5;
   // the breath: every word spoken in a turn tires the voice a little —
-  // multi-casting is a choice with a cost, not a free sweep
-  const FATIGUE_STEP = 0.15;
+  // multi-casting is a choice with a cost, not a free sweep. LIVING
+  // SPEECH breathes easier: a word spelled purely from letter tiles
+  // tires less than one leaning on a blank or a bobbin.
+  const FATIGUE_PURE = 0.10;
+  const FATIGUE_ASSISTED = 0.20;
   const FATIGUE_FLOOR = 0.4;
   // uncut runes: blank tiles minted by SOLVING, shaped into any letter
   // when spoken, spent forever. Never drawn from the bag.
@@ -55,11 +67,16 @@
   // the shuttle: set a tile aside once per turn; it rides with you
   // across turns AND battles until spoken
   const SHUTTLE_BASE = 2;
-  // bobbins: pre-wound word-parts, drafted from YOUR grimoire's notes.
-  // Each speaks its letters as one block, once per battle, then re-inks.
-  // Pre-wound thread is not living speech: the word carries BOBBIN_MULT.
-  const BOBBIN_MAX = 2;
-  const BOBBIN_MULT = 0.85;
+  // bobbins are VESSELS now — batteries of thread. A wound vessel
+  // speaks its part as one block; speaking empties it, and it is
+  // rewound by feeding it letters from the pile (any pace, across
+  // turns and battles). An empty vessel can instead CAPTURE any part
+  // its keeper knows — secrets included — by winding its letters
+  // CAPTURE_WINDS full times. You own an inventory; at most
+  // BOBBIN_ACTIVE ride the loom's frame, chosen outside battle.
+  const BOBBIN_ACTIVE = 3;
+  const BOBBIN_INVENTORY = 8;
+  const CAPTURE_WINDS = 3;
   const VOWELS = 'AEIOU';
   // the deep form notes never drop from ordinary study — elites, bosses and
   // the elder roads hold them
@@ -125,7 +142,7 @@
       guessesPerTurn: 1,
       tileDiscardUsed: false,
       shuttleUsed: false,
-      spokenThisTurn: 0,
+      fatigue: 0,
       blankMinted: false,
       quillUsed: false,
       sealedNotes: new Set(),
@@ -137,7 +154,6 @@
     };
     if (!run.shuttle) run.shuttle = [];
     if (!run.bobbins) run.bobbins = [];
-    for (const bob of run.bobbins) bob.used = false; // bobbins re-ink
     refillTray(b);
     // uncut runes ride between battles: they re-enter the fresh tray,
     // each taking the place of a drawn letter
@@ -216,7 +232,7 @@
 
   /* the breath: multiplier for the NEXT word spoken this turn */
   function spokenMult(b) {
-    return Math.max(FATIGUE_FLOOR, Math.round((1 - FATIGUE_STEP * (b.spokenThisTurn || 0)) * 100) / 100);
+    return Math.max(FATIGUE_FLOOR, Math.round((1 - (b.fatigue || 0)) * 100) / 100);
   }
 
   /* solving leaves an UNCUT RUNE on the loom — a blank tile, shaped
@@ -285,7 +301,7 @@
       const fat = spokenMult(b);
       if (fat < 1) say(b, `🌬 Your breath is short — the solving carries ×${fat} of its force.`);
       castWordFx(b, word, SOLVE_MULT * fat, 'solved');
-      b.spokenThisTurn++;
+      b.fatigue += FATIGUE_PURE; // a solve is living speech
       mintBlank(b);
       if (!b.over) serveMystery(b, m.len);
       return { ok: true, correct: true, marks, notes: fresh };
@@ -343,8 +359,116 @@
     }
     return used;
   }
-  /* ---------------- bobbins: pre-woven word-parts ---------------- */
-  const availBobbins = (b) => (b.run.bobbins || []).filter(x => !x.used);
+  /* ---------------- bobbins: vessels of pre-wound thread ---------------- */
+  // seq null = a blank vessel awaiting a capture
+  function makeVessel(seq, icon, wound) {
+    return { id: tileSeq++, seq: seq || null, icon: icon || '🪢',
+      wound: !!(seq && wound), left: seq && !wound ? seq : '',
+      capSeq: null, capIcon: null, winds: 0, active: false };
+  }
+  const activeVessels = (run) => (run.bobbins || []).filter(v => v.active);
+  const availBobbins = (b) => activeVessels(b.run).filter(v => v.wound && v.seq);
+
+  // what a vessel is currently winding toward (its own part, or a capture)
+  const windingSeq = (v) => v.capSeq || v.seq;
+
+  /* feed letters from the pile into an unwound ACTIVE vessel. Each tile
+   * fills one still-needed letter of the current wind; uncut runes are
+   * too precious for winding. Rewinding a vessel's own part takes ONE
+   * full wind; CAPTURING a new part takes CAPTURE_WINDS of them. */
+  function feedVessel(b, vesselId, ids) {
+    if (b.over) return { ok: false, reason: 'over' };
+    const v = activeVessels(b.run).find(x => x.id === vesselId);
+    if (!v || v.wound || !windingSeq(v)) return { ok: false, reason: 'no-vessel' };
+    let fed = 0;
+    for (const id of ids || []) {
+      const t = b.tray.find(x => x.id === id && !x.frozen && !x.blank)
+        || (b.run.shuttle || []).find(x => x.id === id && !x.blank);
+      if (!t || !v.left.includes(t.ch)) continue;
+      v.left = v.left.replace(t.ch, '');
+      const ti = b.tray.indexOf(t);
+      if (ti >= 0) b.tray.splice(ti, 1); else b.run.shuttle.splice(b.run.shuttle.indexOf(t), 1);
+      fed++;
+    }
+    if (!fed) return { ok: false, reason: 'no-fit' };
+    let done = false, captured = false;
+    if (!v.left.length) {
+      if (v.capSeq && ++v.winds < CAPTURE_WINDS) {
+        v.left = v.capSeq; // wind it again — the thread must learn the shape
+      } else {
+        if (v.capSeq) { v.seq = v.capSeq; v.icon = v.capIcon || v.icon; v.capSeq = null; v.capIcon = null; captured = true; }
+        v.winds = 0; v.wound = true; done = true;
+      }
+    }
+    const what = windingSeq(v) || v.seq;
+    if (captured) say(b, `🪢 <b>${v.seq}</b> is captured — the vessel knows its shape now, wound and ready.`);
+    else if (done) say(b, `🪢 The <b>${v.seq}</b> vessel is wound full — ready to speak.`);
+    else if (v.capSeq) say(b, `🪢 You wind thread toward <b>${what}</b> — pass ${v.winds + 1} of ${CAPTURE_WINDS}, <b>${v.left.length}</b> letter${v.left.length === 1 ? '' : 's'} to go.`);
+    else say(b, `🪢 You wind <b>${fed}</b> letter${fed > 1 ? 's' : ''} onto the ${v.seq} vessel — <b>${v.left.length}</b> to go.`);
+    fxEmit(b, { type: 'wind', n: fed });
+    return { ok: true, fed, wound: done, captured };
+  }
+
+  /* aim an empty vessel at a NEW part (any note you hold, secrets too).
+   * Winding it CAPTURE_WINDS full times makes the part its own. */
+  function startCapture(run, vesselId, seq, icon) {
+    const v = (run.bobbins || []).find(x => x.id === vesselId);
+    if (!v || v.wound) return false;
+    if (!windableParts(run.meta).some(p => p.seq === seq)) return false;
+    v.capSeq = seq; v.capIcon = icon || '🪢'; v.winds = 0; v.left = seq;
+    return true;
+  }
+
+  /* every part in the grimoire a vessel could hold (2+ letters). The
+   * secret grammar appears here ONLY for its keeper — it is never
+   * offered, listed, or sold. */
+  function windableParts(meta) {
+    const out = [];
+    const seen = new Set();
+    const add = (seq, icon, title, elder) => {
+      if (!seq || seq.length < 2 || seen.has(seq)) return;
+      seen.add(seq);
+      out.push({ seq, icon, title, elder: !!elder });
+    };
+    for (const el of Morph.ELEMENTS) {
+      if (meta.parts.has('root:' + el.id)) add(el.root, el.icon, `the ${el.name} root`);
+      if (meta.secrets.has('sroot:' + el.id)) add(el.secret, el.icon, `the elder ${el.name}`, true);
+      if (meta.parts.has('alt:' + el.id)) add(el.alt, el.icon, `${el.name}'s late spelling`);
+      if (meta.parts.has('suf:' + el.id + ':medium') && el.medium.length >= 2) add(el.medium, el.icon, `${el.name}'s medium suffix`);
+      if (meta.parts.has('suf:' + el.id + ':large')) add(el.large, el.icon, `${el.name}'s large suffix`);
+    }
+    for (const el of Morph.SECRET_ELEMENTS) {
+      if (meta.secrets.has('selem:' + el.id)) {
+        add(el.root, el.icon, `the ${el.name} root`, true);
+        add(el.alt, el.icon, `${el.name}'s late spelling`, true);
+      }
+    }
+    for (const c of Morph.CENTERS) if (meta.parts.has('center:' + c.id)) add(c.seq, c.icon, c.name);
+    for (const c of Morph.SECRET_CENTERS) if (meta.secrets.has('scenter:' + c.id)) add(c.seq, c.icon, c.name, true);
+    if (meta.parts.has('join:et')) add('ET', '💍', 'the Wedding');
+    if (meta.secrets.has('sjoin:ac')) add('AC', '🗝', 'the Old Wedding', true);
+    return out;
+  }
+
+  /* the loadout: at most BOBBIN_ACTIVE vessels ride the frame. The UI
+   * locks changes during battle. */
+  function setVesselActive(run, vesselId, on) {
+    const v = (run.bobbins || []).find(x => x.id === vesselId);
+    if (!v) return { ok: false, reason: 'no-vessel' };
+    if (on && !v.active && activeVessels(run).length >= BOBBIN_ACTIVE) return { ok: false, reason: 'full' };
+    v.active = !!on;
+    return { ok: true };
+  }
+
+  /* unspool a free shuttle notch into a spare vessel — one-way */
+  function unspoolShuttle(run) {
+    if (shuttleCap(run) <= 0 || shuttleCap(run) <= run.shuttle.length) return { ok: false, reason: 'no-notch' };
+    if ((run.bobbins || []).length >= BOBBIN_INVENTORY) return { ok: false, reason: 'inventory' };
+    run.unspooled = (run.unspooled || 0) + 1;
+    const v = makeVessel(null, '🪢', false);
+    run.bobbins.push(v);
+    return { ok: true, vessel: v };
+  }
 
   /* how the loom can pay for a word: letter tiles first (blanks last);
    * only if the letters alone cannot, ONE whole bobbin spoken as a
@@ -432,7 +556,7 @@
   }
 
   /* ---------------- the shuttle: tiles set aside, across turns ---------------- */
-  function shuttleCap(run) { return SHUTTLE_BASE + (run.perks.shuttle || 0); }
+  function shuttleCap(run) { return Math.max(0, SHUTTLE_BASE + (run.perks.shuttle || 0) - (run.unspooled || 0)); }
   // once per turn: lift one tray tile onto the shuttle. It rides there —
   // safe from foes, across turns and battles — until spoken or taken back.
   function shuttleTile(b, id) {
@@ -503,10 +627,12 @@
     }
     if (blanksSpent) say(b, `★ ${blanksSpent > 1 ? blanksSpent + ' uncut runes shape themselves' : 'An uncut rune shapes itself'} into the word — and is spent.`);
     for (const bob of pieces.bobbins) {
-      bob.used = true;
-      say(b, `🪢 The <b>${bob.seq}</b> bobbin unwinds into the word — pre-wound thread speaks a little flat (×${BOBBIN_MULT}). It will re-ink after this battle.`);
+      bob.wound = false;
+      bob.left = bob.seq;
+      say(b, `🪢 The <b>${bob.seq}</b> vessel unwinds into the word — feed it letters to wind it anew.`);
     }
-    const fat = spokenMult(b) * (pieces.bobbins.length ? BOBBIN_MULT : 1);
+    const assisted = blanksSpent > 0 || pieces.bobbins.length > 0;
+    const fat = spokenMult(b);
     if (readable) { b.stats.casts++; castWordFx(b, word, fat, 'cast'); }
     else {
       b.stats.improvs++;
@@ -521,7 +647,8 @@
       }
       castWordFx(b, word, improv, 'improvised');
     }
-    b.spokenThisTurn++;
+    // living speech breathes easier than assisted speech
+    b.fatigue += assisted ? FATIGUE_ASSISTED : FATIGUE_PURE;
     return { ok: true, inscribed: readable };
   }
 
@@ -853,7 +980,7 @@
     b.guessesThisTurn = 0;
     b.tileDiscardUsed = false;
     b.shuttleUsed = false;
-    b.spokenThisTurn = 0; // the breath returns
+    b.fatigue = 0; // the breath returns
     for (const t of b.tray) if (t.frozen) t.frozen--;
     const debt = b._trayDebt || 0;
     b._trayDebt = 0;
@@ -895,7 +1022,8 @@
       bag,
       shuttle: [], // tiles set aside — they ride across turns and battles
       blanks: 0,   // uncut runes awaiting the next battle's tray
-      bobbins: [], // pre-wound word-parts, drafted from the grimoire
+      bobbins: [], // vessels of pre-wound thread — the inventory
+      unspooled: 0,
       perks: {},
       flags: {},
       worldIdx: 0, stageIdx: 0,
@@ -904,6 +1032,14 @@
       startNotes: meta.parts.size,
       startSecrets: meta.secrets.size,
     };
+    // every Weaver sets out with three root vessels, wound and riding
+    const els = Morph.ELEMENTS.slice();
+    for (let i = 0; i < 3 && els.length; i++) {
+      const el = els.splice(Math.floor(rng() * els.length), 1)[0];
+      const v = makeVessel(el.root, el.icon, true);
+      v.active = true;
+      run.bobbins.push(v);
+    }
     return run;
   }
 
@@ -965,23 +1101,32 @@
   }
 
   /* ---------------- rewards ---------------- */
-  /* bobbins are cut ONLY from notes the grimoire already holds — knowledge
-   * becomes matter. The secret grammar never appears here: secrets are
-   * written nowhere but in you. */
+  /* offered bobbins come ONLY from PUBLIC notes the grimoire holds —
+   * knowledge becomes matter. The secret grammar is never offered:
+   * its keeper may CAPTURE it, but no one sells what is written
+   * nowhere. */
   function bobbinCandidates(run) {
-    const wound = new Set((run.bobbins || []).map(x => x.seq));
+    const held = new Set((run.bobbins || []).map(x => x.seq).filter(Boolean));
     const out = [];
     for (const el of Morph.ELEMENTS) {
-      if (run.meta.parts.has('root:' + el.id) && !wound.has(el.root))
+      if (run.meta.parts.has('root:' + el.id) && !held.has(el.root))
         out.push({ seq: el.root, icon: el.icon, label: `${el.root} — the ${el.name} root` });
-      if (run.meta.parts.has('alt:' + el.id) && !wound.has(el.alt))
+      if (run.meta.parts.has('alt:' + el.id) && !held.has(el.alt))
         out.push({ seq: el.alt, icon: el.icon, label: `${el.alt} — ${el.name}'s late spelling, the key to its blends` });
     }
     for (const c of Morph.CENTERS) {
-      if (run.meta.parts.has('center:' + c.id) && !wound.has(c.seq))
+      if (run.meta.parts.has('center:' + c.id) && !held.has(c.seq))
         out.push({ seq: c.seq, icon: c.icon, label: `${c.seq} — ${c.name}` });
     }
     return out;
+  }
+  // grant a vessel (wound with a part, or blank) into the inventory
+  function grantVessel(run, seq, icon) {
+    if ((run.bobbins || []).length >= BOBBIN_INVENTORY) return null;
+    const v = makeVessel(seq, icon, true);
+    if (activeVessels(run).length < BOBBIN_ACTIVE) v.active = true;
+    run.bobbins.push(v);
+    return v;
   }
 
   function missingDeepForms(meta) { return DEEP_FORMS.filter(pid => !meta.parts.has(pid)); }
@@ -1008,14 +1153,16 @@
     if ((run.perks.ribbon || 0) < 4 && chipMax(run) < MAX_LEN)
       offers.push({ kind: 'ribbon', title: 'Ribbon Index', desc: `Your loom-sense reaches one rune further (now feels words to ${chipMax(run) + 1} runes).` });
     if (!run.perks.quill) offers.push({ kind: 'quill', title: 'Quill of Second Thoughts', desc: 'Once per battle: a second guess in one turn.' });
-    if ((run.perks.shuttle || 0) < 2) offers.push({ kind: 'shuttle', title: 'Ivory Shuttle', desc: `Your shuttle holds one more set-aside tile (now ${shuttleCap(run) + 1}).` });
-    if ((run.bobbins || []).length < BOBBIN_MAX) {
+    if ((run.perks.shuttle || 0) < 4) offers.push({ kind: 'shuttle', title: 'Ivory Shuttle', desc: `Your shuttle holds one more set-aside tile (now ${shuttleCap(run) + 1}).` });
+    if ((run.bobbins || []).length < BOBBIN_INVENTORY) {
       const cands = bobbinCandidates(run);
       for (let i = 0; i < 2 && cands.length; i++) {
         const c = cands.splice(Math.floor(run.rng() * cands.length), 1)[0];
-        offers.push({ kind: 'bobbin', seq: c.seq, icon: c.icon, title: `Wind a Bobbin: ${c.seq}`,
-          desc: `${c.icon} ${c.label}. Pre-wound thread — speak its letters as one block, once per battle (the word carries ×${BOBBIN_MULT}); it re-inks between battles.` });
+        offers.push({ kind: 'bobbin', seq: c.seq, icon: c.icon, title: `A Wound Vessel: ${c.seq}`,
+          desc: `${c.icon} ${c.label}. Arrives wound — speak it as one block; feed it letters to wind it anew.` });
       }
+      offers.push({ kind: 'vessel', title: 'A Spare Vessel',
+        desc: '🪢 An empty bobbin. Aim it at any part you know — secrets included — and wind its letters thrice to capture it.' });
     }
     if (!run.perks.whetstone) offers.push({ kind: 'whetstone', title: 'Whetstone', desc: 'Improvised words carry ×0.7 instead of ×0.5.' });
     offers.push({ kind: 'vial', title: 'Ink Vial', desc: '+6 utmost ink, and mend that much.' });
@@ -1050,9 +1197,17 @@
       case 'quill': run.perks.quill = true; return 'The quill hums with hindsight.';
       case 'shuttle': run.perks.shuttle = (run.perks.shuttle || 0) + 1; return 'The shuttle grows a notch — one more tile may ride.';
       case 'bobbin': {
+        const v = grantVessel(run, offer.seq, offer.icon);
+        return v ? `${offer.seq} joins your vessels${v.active ? ', riding the frame' : ' (the frame is full — swap it in between battles)'}.`
+          : 'Your vessel inventory is full.';
+      }
+      case 'vessel': {
         run.bobbins = run.bobbins || [];
-        run.bobbins.push({ id: tileSeq++, seq: offer.seq, icon: offer.icon, used: false });
-        return `${offer.seq} winds onto the loom's frame — speak it as one block.`;
+        if (run.bobbins.length >= BOBBIN_INVENTORY) return 'Your vessel inventory is full.';
+        const v = makeVessel(null, '🪢', false);
+        if (activeVessels(run).length < BOBBIN_ACTIVE) v.active = true;
+        run.bobbins.push(v);
+        return 'An empty vessel joins your inventory — aim it at a part you know, and wind.';
       }
       case 'whetstone': run.perks.whetstone = true; return 'Your improvisations sharpen.';
       case 'vial': run.maxHp += 6; run.hp = Math.min(run.maxHp, run.hp + 6); return 'Your inkwell deepens.';
@@ -1091,6 +1246,23 @@
     if (fx.vowelRich) { for (const v of 'AEIOU') run.bag[v] = Math.round(run.bag[v] * 1.5); bits.push('vowels run rich'); }
     if (fx.revealNext) { run.flags.revealNext = true; bits.push('a rune will be revealed'); }
     if (fx.curse === 'longmystery') { run.flags.longmystery = true; bits.push('the next mystery runs long'); }
+    if (fx.bobbin) {
+      const cands = bobbinCandidates(run);
+      if (cands.length) {
+        const c = pick(run.rng, cands);
+        const v = grantVessel(run, c.seq, c.icon);
+        bits.push(v ? `a wound ${c.seq} vessel` : 'the inventory is full — nothing gained');
+      } else bits.push('no part is left unwound — nothing gained');
+    }
+    if (fx.vessel) {
+      if ((run.bobbins || []).length < BOBBIN_INVENTORY) {
+        const v = makeVessel(null, '🪢', false);
+        if (activeVessels(run).length < BOBBIN_ACTIVE) v.active = true;
+        run.bobbins.push(v);
+        bits.push('an empty vessel');
+      } else bits.push('the inventory is full — nothing gained');
+    }
+    if (fx.shuttleSlot) { run.perks.shuttle = (run.perks.shuttle || 0) + fx.shuttleSlot; bits.push('+1 shuttle notch'); }
     if (fx.note) {
       for (let i = 0; i < fx.note; i++) {
         const missing = Morph.PART_IDS.filter(pid => !run.meta.parts.has(pid) && !DEEP_FORMS.includes(pid));
@@ -1268,9 +1440,11 @@
     guess, canGuess, useQuill, judge, serveMystery, chooseLength, guessableLengths, revealLetter,
     castWord, canSpell, tilesFor, spellableWords, mulligan, endTurn,
     anySpellable, discardTiles, DISCARD_MAX, loomSense,
-    spokenMult, FATIGUE_STEP, FATIGUE_FLOOR,
+    spokenMult, FATIGUE_PURE, FATIGUE_ASSISTED, FATIGUE_FLOOR,
     shuttleTile, unshuttleTile, shuttleCap, makeBlank, BLANK_CAP,
-    piecesFor, bobbinCandidates, availBobbins, BOBBIN_MAX, BOBBIN_MULT,
+    piecesFor, bobbinCandidates, availBobbins, activeVessels, makeVessel,
+    feedVessel, startCapture, windableParts, setVesselActive, unspoolShuttle,
+    grantVessel, windingSeq, BOBBIN_ACTIVE, BOBBIN_INVENTORY, CAPTURE_WINDS,
     targetFoe, alive, describeIntent, foeIntent,
     rollRewards, applyReward, campChoices, applyCamp,
     rollEvent, applyEventChoice, applyElder,

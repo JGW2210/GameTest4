@@ -1,6 +1,9 @@
 /* WORDLOOM — persistence. The grimoire survives every death.
  * v2: notes + secret knowledge + solved words; migrates v1 saves
- * (numbered form ids become named forms). */
+ * (numbered form ids become named forms).
+ * Fifth weaving: the ten element ROOTS are day-one knowledge — every
+ * grimoire holds them, new or old. Discovery lies beyond the roots
+ * (and beneath them: the elder spellings stay secret). */
 (function () {
   const KEY = 'wordloom-meta-v2';
   const OLD_KEY = 'wordloom-meta-v1';
@@ -9,6 +12,13 @@
     'form:7': 'form:weave', 'form:8': 'form:mirror', 'form:9': 'form:verse',
     'form:10': 'form:sovereign',
   };
+
+  // the notes every grimoire is born holding: all ten roots, the two
+  // starter small suffixes, and the Cantrip form (so IGNA and SANA read)
+  function birthright() {
+    const parts = window.Morph.ELEMENTS.map(e => 'root:' + e.id);
+    return parts.concat(['suf:ign:small', 'suf:san:small', 'form:cantrip']);
+  }
 
   function load() {
     try {
@@ -27,7 +37,7 @@
         return fresh();
       }
       const d = JSON.parse(raw);
-      return {
+      const meta = {
         parts: new Set(d.parts || []),
         secrets: new Set(d.secrets || []),
         solved: new Set(d.solved || []),
@@ -36,14 +46,14 @@
         wins: d.wins || 0,
         bestNode: d.bestNode || 0,
       };
+      for (const pid of birthright()) meta.parts.add(pid); // older saves gain the roots
+      return meta;
     } catch (e) { return fresh(); }
   }
 
-  // Every grimoire begins with the notes that read IGNA (a spark) and
-  // SANA (a salve).
   function fresh() {
     return {
-      parts: new Set(['root:ign', 'suf:ign:small', 'root:san', 'suf:san:small', 'form:cantrip']),
+      parts: new Set(birthright()),
       secrets: new Set(),
       solved: new Set(['IGNA', 'SANA']),
       elderDrought: 0,
