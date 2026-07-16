@@ -14,10 +14,11 @@
   let picked = [];
   let blankAssign = {}; // uncut runes: tileId → the letter it is shaped into
 
-  /* a picked id may live in the tray or ride on the shuttle */
+  /* a picked id may live in the tray, ride the shuttle, or be a bobbin */
   function tileById(id) {
     let t = battle && battle.tray.find(x => x.id === id);
     if (!t && run && run.shuttle) t = run.shuttle.find(x => x.id === id);
+    if (!t && run && run.bobbins) t = run.bobbins.find(x => x.id === id);
     return t;
   }
 
@@ -459,6 +460,27 @@
     });
     for (let i = run.shuttle.length; i < Loom.shuttleCap(run); i++) rack.appendChild(el('div', 'tile slot-empty', '·'));
     loom.appendChild(rack);
+
+    // bobbins: pre-wound word-parts on the loom's frame
+    if (run.bobbins.length) {
+      const brack = el('div', 'bobbin-rack');
+      brack.appendChild(el('span', 'shuttle-label', '🪢 bobbins'));
+      run.bobbins.forEach(bob => {
+        const node = el('div', 'tile bobbin' + (bob.used ? ' exhausted' : '') + (picked.includes(bob.id) ? ' used' : ''), bob.seq);
+        node.dataset.id = bob.id;
+        node.title = bob.used
+          ? 'Spoken this battle — it re-inks at the next.'
+          : `${bob.icon} Pre-wound thread: speaks ${bob.seq} as one block, once per battle.`;
+        if (!bob.used && !b.over) node.onclick = () => {
+          if (picked.includes(bob.id)) return;
+          picked.push(bob.id);
+          node.classList.remove('pop'); void node.offsetWidth; node.classList.add('pop');
+          refreshBuild();
+        };
+        brack.appendChild(node);
+      });
+      loom.appendChild(brack);
+    }
     loom.appendChild(el('div', 'spell-build', ''));
     loom.appendChild(el('div', 'build-hint', ''));
     const btns = el('div', 'loom-btns');
@@ -710,7 +732,7 @@
   /* ---- spell building ---- */
   function builtWord() {
     return picked.map(id => tileById(id)).filter(Boolean)
-      .map(t => t.blank ? (blankAssign[t.id] || '') : t.ch).join('');
+      .map(t => t.blank ? (blankAssign[t.id] || '') : (t.seq || t.ch)).join('');
   }
 
   /* shaping an uncut rune: a small picker chooses its letter */
@@ -755,6 +777,7 @@
     const know = Loom.knowSet(meta, b.sealedNotes);
     const readable = entry && Morph.canRead(know, entry);
     const usesBlank = picked.some(id => { const t = tileById(id); return t && t.blank; });
+    const bobbinCount = picked.filter(id => { const t = tileById(id); return t && t.seq; }).length;
     // an elder word may only be spelled with true letters
     const blankBarred = entry && entry.hidden && usesBlank && !Loom.canSpell(b, word, { noBlanks: true });
     build.innerHTML = word
@@ -762,13 +785,15 @@
       : '<span class="no dim">— pick tiles to weave a word —</span>';
     // NEVER hint at hidden words: an unreadable hidden word looks identical
     // to an unreadable ordinary word.
-    hint.innerHTML = blankBarred
-      ? '<span class="improv">★ this word must be spelled true — the uncut rune cannot shape it</span>'
-      : entry
-        ? (readable ? `✓ ${entry.hidden ? entry.name : entry.name + ' — ' + entry.desc}`
-          : `<span class="improv">its grammar is not in your notes — improvised at half power</span>`)
-        : (word.length >= 3 ? 'not a word of the loom-tongue' : '');
-    if (castBtn) castBtn.disabled = !entry || !!blankBarred;
+    hint.innerHTML = bobbinCount > 1
+      ? '<span class="improv">🪢 two pre-wound blocks tangle the thread — one bobbin per word</span>'
+      : blankBarred
+        ? '<span class="improv">★ this word must be spelled true — the uncut rune cannot shape it</span>'
+        : entry
+          ? (readable ? `✓ ${entry.hidden ? entry.name : entry.name + ' — ' + entry.desc}`
+            : `<span class="improv">its grammar is not in your notes — improvised at half power</span>`)
+          : (word.length >= 3 ? 'not a word of the loom-tongue' : '');
+    if (castBtn) castBtn.disabled = !entry || !!blankBarred || bobbinCount > 1;
     const discBtn = document.getElementById('discard-btn');
     if (discBtn) discBtn.disabled = b.over || b.tileDiscardUsed || !picked.length || picked.length > Loom.DISCARD_MAX;
   }
@@ -777,7 +802,9 @@
     const b = battle;
     const word = builtWord();
     if (!Morph.WORDS[word]) return;
-    const r = Loom.castWord(b, word);
+    // pass the exact picks: the engine honors them to the tile, so no
+    // bobbin or banked letter is ever spent uninvited
+    const r = Loom.castWord(b, word, picked);
     if (!r.ok) {
       toast(r.reason === 'true-spelling'
         ? '★ This word must be spelled true — the uncut rune cannot shape it.'
@@ -992,7 +1019,9 @@
       <p class="small" style="margin-top:6px"><b>The breath:</b> every word spoken in a turn tires the voice — each after
       the first carries 15% less (the breath returns when the turn ends). <b>Uncut runes:</b> solving a mystery leaves a
       blank tile ★ on your loom — shaped into any letter when spoken, spent forever, and never for the elder words.
-      <b>The shuttle:</b> once per turn, set one tile aside — it rides with you across turns and battles until spoken.</p>
+      <b>The shuttle:</b> once per turn, set one tile aside — it rides with you across turns and battles until spoken.
+      <b>Bobbins:</b> after a battle you may wind a note you hold — a root, a center, a late spelling — into pre-wound thread:
+      it speaks its letters as one block, once per battle, and re-inks between battles. Foes cannot touch it.</p>
       <p class="small dim" style="margin-top:6px">Your grimoire records <b>notes</b> — these rules and parts — not words.
       A word casts at full strength once every part it uses is in your notes; otherwise it can be improvised at half power —
       and the speaking itself teaches: any true word you improvise, or offer as a mystery guess, inscribes its unknown parts.

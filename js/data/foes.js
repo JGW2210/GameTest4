@@ -115,7 +115,7 @@
   // teacher, but from the Inkfen on the curve steepens — notes arrive
   // faster now, and the third weaving's uncut runes and shuttle make
   // every grimoire cast more freely, so the Ruins press harder still.
-  const SCALE = (idx) => 1 + idx * 0.09 + Math.max(0, idx - 7) * 0.09;
+  const SCALE = (idx) => 1 + idx * 0.09 + Math.max(0, idx - 7) * 0.12;
 
   return { FOES, WORLDS, SCALE };
 });

@@ -73,6 +73,15 @@ words refuse it; they must be spelled true. And once per turn the
 battles** — banking rare letters toward a long word is now a plan, not
 a prayer (the Ivory Shuttle reward widens the rack).
 
+Knowledge can even become matter: after a battle you may **wind a
+bobbin** from a note you hold — a root, a center, a late spelling —
+turning it into **pre-wound thread** that speaks its letters as one
+block. One bobbin may speak per word (two blocks tangle the thread),
+once per battle each (they re-ink between battles), and the word
+carries ×0.85 — pre-wound thread is not living speech. Two ride the
+loom's frame at most, foes cannot touch them, and the secret grammar
+is never wound: secrets appear in no chip, note, or guide.
+
 You **choose the mystery word's length**. Lengths beyond the basic forms
 unlock through their form notes — and the deep forms (Mirror, Verse,
 Sovereign, the Unions) never drop from ordinary study; only elites, wardens,
@@ -88,10 +97,10 @@ thieves, rime wraiths, wisps that blur your wordle marks, lexicons that sap
 revealed runes, adaptive golems that calcify against your favorite element —
 and the Lexoleech, which **seals one of your grimoire notes** until it dies.
 
-Rewards: study, mend, widen the loom, infuse the bag, Ribbon Index, Quill of
-Second Thoughts (an extra guess, once per battle), Whetstone (better
-improvisation), Ink Vial, Ivory Shuttle — and deep form notes from elites
-and wardens.
+Rewards: study, mend, widen the loom, infuse the bag, wind a bobbin,
+Ribbon Index, Quill of Second Thoughts (an extra guess, once per battle),
+Whetstone (better improvisation), Ink Vial, Ivory Shuttle — and deep form
+notes from elites and wardens.
 
 Death loses nothing that matters: **every note makes the next run
 stronger** — and pushes the mystery words longer, up to the 13-rune grand
@@ -109,15 +118,16 @@ lost.
 (Speaking-teaches makes every run generous with notes — ~40 banked per fresh
 death — while per-run win rates keep the old shape; the hidden grammar, 18
 secrets behind rare elder doors, is the long game. The third weaving's
-uncut runes and shuttle soften the early sawtooth a little, and World 3
-presses harder still to hold the ceiling.)
+uncut runes and shuttle soften the early sawtooth a little, bobbins pay
+out with the grimoire, and World 3 presses harder still to hold the
+ceiling.)
 
 | grimoire | win rate | note |
 |---|---:|---|
-| fresh (5 starter notes) | ~8–11% | banks ~40 notes and ~0.4 secrets per run |
-| +16 notes | ~18% | |
-| +30 notes, Scrivener | ~17% | the Cantor reaches ~40% here |
-| full 85-note grammar | ~58% | ~73% with every secret, as the Cantor |
+| fresh (5 starter notes) | ~9–15% | banks ~40 notes and ~0.4 secrets per run |
+| +16 notes | ~16% | |
+| +30 notes, Scrivener | ~17% | the Cantor reaches ~44% here |
+| full 85-note grammar | ~61% | ~74% with every secret, as the Cantor |
 
 ## Layout
 

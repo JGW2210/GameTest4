@@ -117,6 +117,7 @@ function simulateRun(notes, skill, clsId, seed, secrets) {
       const offers = Loom.rollRewards(run, node);
       const rank = (o) => o.kind === 'formnote' ? 7 : o.kind === 'study' ? 5
         : (o.kind === 'mend' && run.hp < run.maxHp * 0.6) ? 6
+        : o.kind === 'bobbin' ? 4.5
         : o.kind === 'ribbon' ? 4 : o.kind === 'loom' ? 3.5 : o.kind === 'vial' ? 3 : 2;
       offers.sort((a, z) => rank(z) - rank(a));
       Loom.applyReward(run, offers[0]);

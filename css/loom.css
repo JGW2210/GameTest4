@@ -439,6 +439,26 @@ body.gl-on #screen { box-shadow: 0 26px 70px rgba(0,0,0,0.75), inset 0 0 60px rg
 }
 .shuttle-rack .slot-empty:hover { transform: none; }
 
+.bobbin-rack {
+  display: flex; gap: 7px; justify-content: center; align-items: center;
+  padding: 4px 4px 2px; flex-wrap: wrap;
+}
+.bobbin-rack .tile.bobbin {
+  width: auto; min-width: 52px; padding: 0 10px; height: 45px;
+  font-family: 'Courier New', monospace; font-size: 18px; letter-spacing: 2px;
+  background: linear-gradient(180deg, #f4e6d0, #dfc493);
+  border-color: #6b5326; border-bottom-width: 4px;
+  box-shadow: 0 0 10px rgba(169,126,30,0.25), 0 3px 6px rgba(0,0,0,0.2);
+}
+.bobbin-rack .tile.bobbin::after {
+  content: '🪢'; position: absolute; font-size: 11px; top: -7px; right: -6px;
+}
+.bobbin-rack .tile.bobbin.exhausted {
+  opacity: 0.4; filter: grayscale(0.8); cursor: default;
+  border-style: dashed; box-shadow: none;
+}
+.bobbin-rack .tile.bobbin.exhausted:hover { transform: none; }
+
 .breath-note {
   margin: 4px auto 0; max-width: 420px; text-align: center;
   font-size: 12.5px; color: #6b5326; font-style: italic;

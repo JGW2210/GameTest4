@@ -16,6 +16,12 @@
  * RUNES (solving mints a blank tile, cap 2, shaped when spoken, spent
  * forever — never for hidden words), and THE SHUTTLE (set one tile
  * aside per turn; it rides across turns and battles until spoken).
+ *
+ * Fourth weaving: BOBBINS — pre-wound word-parts (roots, centers,
+ * late spellings) drafted as rewards from notes the grimoire already
+ * holds. A bobbin speaks its letters as one block, once per battle,
+ * and re-inks between battles. Foes cannot touch them. The secret
+ * grammar is never wound: secrets appear in no chip, note, or guide.
  * ============================================================ */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -49,6 +55,11 @@
   // the shuttle: set a tile aside once per turn; it rides with you
   // across turns AND battles until spoken
   const SHUTTLE_BASE = 2;
+  // bobbins: pre-wound word-parts, drafted from YOUR grimoire's notes.
+  // Each speaks its letters as one block, once per battle, then re-inks.
+  // Pre-wound thread is not living speech: the word carries BOBBIN_MULT.
+  const BOBBIN_MAX = 2;
+  const BOBBIN_MULT = 0.85;
   const VOWELS = 'AEIOU';
   // the deep form notes never drop from ordinary study — elites, bosses and
   // the elder roads hold them
@@ -125,6 +136,8 @@
       fxq: [],
     };
     if (!run.shuttle) run.shuttle = [];
+    if (!run.bobbins) run.bobbins = [];
+    for (const bob of run.bobbins) bob.used = false; // bobbins re-ink
     refillTray(b);
     // uncut runes ride between battles: they re-enter the fresh tray,
     // each taking the place of a drawn letter
@@ -330,7 +343,49 @@
     }
     return used;
   }
-  const canSpell = (b, word, opts) => !!tilesFor(b, word, opts);
+  /* ---------------- bobbins: pre-woven word-parts ---------------- */
+  const availBobbins = (b) => (b.run.bobbins || []).filter(x => !x.used);
+
+  /* how the loom can pay for a word: letter tiles first (blanks last);
+   * only if the letters alone cannot, ONE whole bobbin spoken as a
+   * block — two pre-wound blocks tangle the thread */
+  function piecesFor(b, word, opts) {
+    const letters = tilesFor(b, word, opts);
+    if (letters) return { tiles: letters, bobbins: [] };
+    for (const bob of availBobbins(b)) {
+      let at = word.indexOf(bob.seq);
+      while (at >= 0) {
+        const tiles = tilesFor(b, word.slice(0, at) + word.slice(at + bob.seq.length), opts);
+        if (tiles) return { tiles, bobbins: [bob] };
+        at = word.indexOf(bob.seq, at + 1);
+      }
+    }
+    return null;
+  }
+  const canSpell = (b, word, opts) => !!piecesFor(b, word, opts);
+
+  /* validate an EXPLICIT picking — tray/shuttle tiles and bobbins, in
+   * speaking order — against the word. A blank covers any letter; a
+   * bobbin must match its block exactly. The player's choice of pieces
+   * is honored to the tile: no bobbin is spent uninvited. */
+  function piecesFromPicks(b, word, ids) {
+    const tiles = [], bobbins = [];
+    let pos = 0;
+    for (const id of ids) {
+      let p = b.tray.find(t => t.id === id && !t.frozen)
+        || (b.run.shuttle || []).find(t => t.id === id);
+      if (p) {
+        if (tiles.includes(p) || pos >= word.length) return null;
+        if (!p.blank && p.ch !== word[pos]) return null;
+        tiles.push(p); pos += 1; continue;
+      }
+      p = availBobbins(b).find(x => x.id === id);
+      if (!p || bobbins.length) return null; // one bobbin per word
+      if (!word.startsWith(p.seq, pos)) return null;
+      bobbins.push(p); pos += p.seq.length;
+    }
+    return pos === word.length ? { tiles, bobbins } : null;
+  }
 
   function chipMax(run) {
     return Math.min(MAX_LEN, run.cls.chipMax + (run.perks.ribbon || 0));
@@ -419,14 +474,22 @@
     return { ok: true, n: tiles.length };
   }
 
-  function castWord(b, word) {
+  function castWord(b, word, picks) {
     if (b.over) return { ok: false, reason: 'over' };
     word = String(word || '').toUpperCase();
     const entry = Morph.WORDS[word];
     if (!entry) return { ok: false, reason: 'not-a-word' };
     // the hidden words must be spelled true — no uncut rune may shape them
-    const tiles = tilesFor(b, word, { noBlanks: !!entry.hidden });
-    if (!tiles) return { ok: false, reason: entry.hidden && canSpell(b, word) ? 'true-spelling' : 'tiles' };
+    let pieces;
+    if (picks && picks.length) {
+      pieces = piecesFromPicks(b, word, picks);
+      if (!pieces) return { ok: false, reason: 'tiles' };
+      if (entry.hidden && pieces.tiles.some(t => t.blank)) return { ok: false, reason: 'true-spelling' };
+    } else {
+      pieces = piecesFor(b, word, { noBlanks: !!entry.hidden });
+      if (!pieces) return { ok: false, reason: entry.hidden && canSpell(b, word) ? 'true-spelling' : 'tiles' };
+    }
+    const tiles = pieces.tiles;
     const know = knowSet(b.run.meta, b.sealedNotes);
     const readable = Morph.canRead(know, entry);
     const blanksSpent = tiles.filter(t => t.blank).length;
@@ -439,7 +502,11 @@
       }
     }
     if (blanksSpent) say(b, `★ ${blanksSpent > 1 ? blanksSpent + ' uncut runes shape themselves' : 'An uncut rune shapes itself'} into the word — and is spent.`);
-    const fat = spokenMult(b);
+    for (const bob of pieces.bobbins) {
+      bob.used = true;
+      say(b, `🪢 The <b>${bob.seq}</b> bobbin unwinds into the word — pre-wound thread speaks a little flat (×${BOBBIN_MULT}). It will re-ink after this battle.`);
+    }
+    const fat = spokenMult(b) * (pieces.bobbins.length ? BOBBIN_MULT : 1);
     if (readable) { b.stats.casts++; castWordFx(b, word, fat, 'cast'); }
     else {
       b.stats.improvs++;
@@ -828,6 +895,7 @@
       bag,
       shuttle: [], // tiles set aside — they ride across turns and battles
       blanks: 0,   // uncut runes awaiting the next battle's tray
+      bobbins: [], // pre-wound word-parts, drafted from the grimoire
       perks: {},
       flags: {},
       worldIdx: 0, stageIdx: 0,
@@ -897,6 +965,25 @@
   }
 
   /* ---------------- rewards ---------------- */
+  /* bobbins are cut ONLY from notes the grimoire already holds — knowledge
+   * becomes matter. The secret grammar never appears here: secrets are
+   * written nowhere but in you. */
+  function bobbinCandidates(run) {
+    const wound = new Set((run.bobbins || []).map(x => x.seq));
+    const out = [];
+    for (const el of Morph.ELEMENTS) {
+      if (run.meta.parts.has('root:' + el.id) && !wound.has(el.root))
+        out.push({ seq: el.root, icon: el.icon, label: `${el.root} — the ${el.name} root` });
+      if (run.meta.parts.has('alt:' + el.id) && !wound.has(el.alt))
+        out.push({ seq: el.alt, icon: el.icon, label: `${el.alt} — ${el.name}'s late spelling, the key to its blends` });
+    }
+    for (const c of Morph.CENTERS) {
+      if (run.meta.parts.has('center:' + c.id) && !wound.has(c.seq))
+        out.push({ seq: c.seq, icon: c.icon, label: `${c.seq} — ${c.name}` });
+    }
+    return out;
+  }
+
   function missingDeepForms(meta) { return DEEP_FORMS.filter(pid => !meta.parts.has(pid)); }
   function studyPool(run) {
     return Morph.VISIBLE.filter(e =>
@@ -922,6 +1009,14 @@
       offers.push({ kind: 'ribbon', title: 'Ribbon Index', desc: `Your loom-sense reaches one rune further (now feels words to ${chipMax(run) + 1} runes).` });
     if (!run.perks.quill) offers.push({ kind: 'quill', title: 'Quill of Second Thoughts', desc: 'Once per battle: a second guess in one turn.' });
     if ((run.perks.shuttle || 0) < 2) offers.push({ kind: 'shuttle', title: 'Ivory Shuttle', desc: `Your shuttle holds one more set-aside tile (now ${shuttleCap(run) + 1}).` });
+    if ((run.bobbins || []).length < BOBBIN_MAX) {
+      const cands = bobbinCandidates(run);
+      for (let i = 0; i < 2 && cands.length; i++) {
+        const c = cands.splice(Math.floor(run.rng() * cands.length), 1)[0];
+        offers.push({ kind: 'bobbin', seq: c.seq, icon: c.icon, title: `Wind a Bobbin: ${c.seq}`,
+          desc: `${c.icon} ${c.label}. Pre-wound thread — speak its letters as one block, once per battle (the word carries ×${BOBBIN_MULT}); it re-inks between battles.` });
+      }
+    }
     if (!run.perks.whetstone) offers.push({ kind: 'whetstone', title: 'Whetstone', desc: 'Improvised words carry ×0.7 instead of ×0.5.' });
     offers.push({ kind: 'vial', title: 'Ink Vial', desc: '+6 utmost ink, and mend that much.' });
 
@@ -954,6 +1049,11 @@
       case 'ribbon': run.perks.ribbon = (run.perks.ribbon || 0) + 1; return 'Your sense of the loom unspools further.';
       case 'quill': run.perks.quill = true; return 'The quill hums with hindsight.';
       case 'shuttle': run.perks.shuttle = (run.perks.shuttle || 0) + 1; return 'The shuttle grows a notch — one more tile may ride.';
+      case 'bobbin': {
+        run.bobbins = run.bobbins || [];
+        run.bobbins.push({ id: tileSeq++, seq: offer.seq, icon: offer.icon, used: false });
+        return `${offer.seq} winds onto the loom's frame — speak it as one block.`;
+      }
       case 'whetstone': run.perks.whetstone = true; return 'Your improvisations sharpen.';
       case 'vial': run.maxHp += 6; run.hp = Math.min(run.maxHp, run.hp + 6); return 'Your inkwell deepens.';
       case 'formnote': run.meta.parts.add(offer.pid); return `${Morph.PARTS[offer.pid].title} — inscribed. New lengths open to you.`;
@@ -1170,6 +1270,7 @@
     anySpellable, discardTiles, DISCARD_MAX, loomSense,
     spokenMult, FATIGUE_STEP, FATIGUE_FLOOR,
     shuttleTile, unshuttleTile, shuttleCap, makeBlank, BLANK_CAP,
+    piecesFor, bobbinCandidates, availBobbins, BOBBIN_MAX, BOBBIN_MULT,
     targetFoe, alive, describeIntent, foeIntent,
     rollRewards, applyReward, campChoices, applyCamp,
     rollEvent, applyEventChoice, applyElder,
