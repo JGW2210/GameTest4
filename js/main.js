@@ -12,6 +12,14 @@
   let run = null;
   let battle = null;
   let picked = [];
+  let blankAssign = {}; // uncut runes: tileId → the letter it is shaped into
+
+  /* a picked id may live in the tray or ride on the shuttle */
+  function tileById(id) {
+    let t = battle && battle.tray.find(x => x.id === id);
+    if (!t && run && run.shuttle) t = run.shuttle.find(x => x.id === id);
+    return t;
+  }
 
   const el = (tag, cls, html) => {
     const n = document.createElement(tag);
@@ -158,6 +166,13 @@
             FX.powerNova(g.x, g.y);
             if (ev.notes) FX.runes(g.x, g.y - 44, '✒✒', { color: '#ffd700', size: 22 });
           }, 260);
+          break;
+        case 'blank':
+          later(() => {
+            const p = loomP();
+            FX.runes(p.x, p.y - 24, '★', { color: '#c9a2ff', size: 24 });
+            FX.burst(p.x, p.y, { count: 14, colors: ['#c9a2ff', '#8a6fd8', '#fff3b0'], speed: 3.5, size: 3 });
+          }, 200);
           break;
         case 'foeAct':
           later(() => {
@@ -350,6 +365,7 @@
     battle = Loom.battleForNode(run, node);
     battle._node = node;
     picked = [];
+    blankAssign = {};
     if (window.GLBG) GLBG.setMood('battle');
     flipScreen(() => {
       renderBattle();
@@ -406,19 +422,43 @@
     const loom = el('div', 'loom-zone');
     loom.appendChild(el('div', 'small center', `— your loom · turn ${b.turn} —`));
     const trayEl = el('div', 'tray');
-    b.tray.forEach(t => {
-      const tile = el('div', 'tile' + ('AEIOU'.includes(t.ch) ? ' vowel' : '') + (t.frozen ? ' frozen' : '') + (picked.includes(t.id) ? ' used' : ''), t.ch);
-      if (!t.frozen) tile.onclick = () => {
-        if (!picked.includes(t.id)) {
-          picked.push(t.id);
-          tile.classList.remove('pop'); void tile.offsetWidth; tile.classList.add('pop');
-          refreshBuild();
-        }
-      };
+    const tileEl = (t) => {
+      const shown = t.blank ? (picked.includes(t.id) && blankAssign[t.id] ? blankAssign[t.id] : '★') : t.ch;
+      const tile = el('div', 'tile' + ('AEIOU'.includes(t.ch) ? ' vowel' : '') + (t.frozen ? ' frozen' : '')
+        + (t.blank ? ' blank' : '') + (picked.includes(t.id) ? ' used' : ''), shown);
       tile.dataset.id = t.id;
-      trayEl.appendChild(tile);
-    });
+      if (t.blank) { tile.dataset.blank = '1'; tile.title = 'An uncut rune — shaped into any letter when spoken, spent forever.'; }
+      if (!t.frozen) tile.onclick = () => {
+        if (picked.includes(t.id)) return;
+        if (t.blank) { pickBlankLetter(t, tile); return; }
+        picked.push(t.id);
+        tile.classList.remove('pop'); void tile.offsetWidth; tile.classList.add('pop');
+        refreshBuild();
+      };
+      return tile;
+    };
+    b.tray.forEach(t => trayEl.appendChild(tileEl(t)));
     loom.appendChild(trayEl);
+
+    // the shuttle: tiles riding across turns and battles
+    const rack = el('div', 'shuttle-rack');
+    rack.appendChild(el('span', 'shuttle-label', '🧺 shuttle'));
+    run.shuttle.forEach(t => {
+      const tile = tileEl(t);
+      tile.classList.add('shuttled');
+      tile.title = (t.blank ? 'An uncut rune, riding the shuttle. ' : '') + 'Click to weave it in · shift-click to return it to the tray.';
+      const base = tile.onclick;
+      tile.onclick = (ev) => {
+        if (ev.shiftKey) {
+          if (Loom.unshuttleTile(b, t.id)) { picked = picked.filter(i => i !== t.id); renderBattle(); }
+          return;
+        }
+        if (base) base(ev);
+      };
+      rack.appendChild(tile);
+    });
+    for (let i = run.shuttle.length; i < Loom.shuttleCap(run); i++) rack.appendChild(el('div', 'tile slot-empty', '·'));
+    loom.appendChild(rack);
     loom.appendChild(el('div', 'spell-build', ''));
     loom.appendChild(el('div', 'build-hint', ''));
     const btns = el('div', 'loom-btns');
@@ -438,6 +478,21 @@
       picked = [];
       afterAction();
     };
+    const shutBtn = el('button', null, b.shuttleUsed ? '🧺 Set (used)' : '🧺 Set aside');
+    shutBtn.id = 'shuttle-btn';
+    shutBtn.title = 'Once per turn: set one picked tray tile aside on the shuttle — it rides with you across turns and battles until spoken.';
+    shutBtn.onclick = () => {
+      const trayPicked = picked.filter(id => b.tray.some(t => t.id === id));
+      if (trayPicked.length !== 1) { toast('Pick exactly one tray tile, then set it aside.'); return; }
+      const r = Loom.shuttleTile(b, trayPicked[0]);
+      if (!r.ok) {
+        toast(r.reason === 'used' ? 'The shuttle takes one tile a turn.' : r.reason === 'full' ? 'The shuttle is full.' : 'The loom refuses.');
+        return;
+      }
+      picked = picked.filter(id => id !== trayPicked[0]);
+      delete blankAssign[trayPicked[0]];
+      renderBattle();
+    };
     const mullBtn = el('button', null, `♻ Sweep (${b.mulligans})`);
     mullBtn.disabled = !b.mulligans;
     mullBtn.onclick = () => { if (Loom.mulligan(b)) { picked = []; renderBattle(); } };
@@ -446,8 +501,14 @@
     const endBtn = el('button', null, '⌛ End Turn');
     endBtn.id = 'end-turn';
     endBtn.onclick = () => { Loom.endTurn(b); picked = []; afterAction(); };
-    btns.append(castBtn, clearBtn, discBtn, mullBtn, guideBtn, endBtn);
+    btns.append(castBtn, clearBtn, discBtn, shutBtn, mullBtn, guideBtn, endBtn);
     loom.appendChild(btns);
+
+    // the breath: every word spoken this turn tires the next one
+    if (!b.over && b.spokenThisTurn > 0) {
+      loom.appendChild(el('div', 'breath-note',
+        `🌬 breath: the next word carries ×${Loom.spokenMult(b)} — it returns when the turn ends`));
+    }
 
     const speak = el('div', 'speakable');
     // stale loom: not one word of the tongue — readable, improvised, at
@@ -648,14 +709,43 @@
 
   /* ---- spell building ---- */
   function builtWord() {
-    return picked.map(id => battle.tray.find(t => t.id === id)).filter(Boolean).map(t => t.ch).join('');
+    return picked.map(id => tileById(id)).filter(Boolean)
+      .map(t => t.blank ? (blankAssign[t.id] || '') : t.ch).join('');
+  }
+
+  /* shaping an uncut rune: a small picker chooses its letter */
+  function pickBlankLetter(t, tileNode) {
+    const old = document.getElementById('blank-picker');
+    if (old) old.remove();
+    const ov = el('div', null, '');
+    ov.id = 'blank-picker';
+    const inner = el('div', 'blank-picker-inner');
+    inner.appendChild(el('div', 'small center', '★ Shape the uncut rune:'));
+    const grid = el('div', 'blank-grid');
+    for (const L of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+      const btn = el('button', 'blank-letter', L);
+      btn.onclick = () => {
+        blankAssign[t.id] = L;
+        picked.push(t.id);
+        ov.remove();
+        if (tileNode) { tileNode.classList.remove('pop'); void tileNode.offsetWidth; tileNode.classList.add('pop'); }
+        refreshBuild();
+      };
+      grid.appendChild(btn);
+    }
+    inner.appendChild(grid);
+    ov.appendChild(inner);
+    ov.onclick = (ev) => { if (ev.target === ov) ov.remove(); };
+    document.body.appendChild(ov);
   }
 
   function refreshBuild() {
     const b = battle;
     const word = builtWord();
-    document.querySelectorAll('.tile').forEach(t => {
-      t.classList.toggle('used', picked.includes(Number(t.dataset.id)));
+    document.querySelectorAll('.tile[data-id]').forEach(tEl => {
+      const id = Number(tEl.dataset.id);
+      tEl.classList.toggle('used', picked.includes(id));
+      if (tEl.dataset.blank) tEl.textContent = picked.includes(id) && blankAssign[id] ? blankAssign[id] : '★';
     });
     const build = document.querySelector('.spell-build');
     const hint = document.querySelector('.build-hint');
@@ -664,16 +754,21 @@
     const entry = Morph.WORDS[word];
     const know = Loom.knowSet(meta, b.sealedNotes);
     const readable = entry && Morph.canRead(know, entry);
+    const usesBlank = picked.some(id => { const t = tileById(id); return t && t.blank; });
+    // an elder word may only be spelled with true letters
+    const blankBarred = entry && entry.hidden && usesBlank && !Loom.canSpell(b, word, { noBlanks: true });
     build.innerHTML = word
-      ? `<span class="${entry ? (readable ? 'ok' : 'improv') : 'no'}">${word}</span>`
+      ? `<span class="${entry ? (readable && !blankBarred ? 'ok' : 'improv') : 'no'}">${word}</span>`
       : '<span class="no dim">— pick tiles to weave a word —</span>';
     // NEVER hint at hidden words: an unreadable hidden word looks identical
     // to an unreadable ordinary word.
-    hint.innerHTML = entry
-      ? (readable ? `✓ ${entry.hidden ? entry.name : entry.name + ' — ' + entry.desc}`
-        : `<span class="improv">its grammar is not in your notes — improvised at half power</span>`)
-      : (word.length >= 3 ? 'not a word of the loom-tongue' : '');
-    if (castBtn) castBtn.disabled = !entry;
+    hint.innerHTML = blankBarred
+      ? '<span class="improv">★ this word must be spelled true — the uncut rune cannot shape it</span>'
+      : entry
+        ? (readable ? `✓ ${entry.hidden ? entry.name : entry.name + ' — ' + entry.desc}`
+          : `<span class="improv">its grammar is not in your notes — improvised at half power</span>`)
+        : (word.length >= 3 ? 'not a word of the loom-tongue' : '');
+    if (castBtn) castBtn.disabled = !entry || !!blankBarred;
     const discBtn = document.getElementById('discard-btn');
     if (discBtn) discBtn.disabled = b.over || b.tileDiscardUsed || !picked.length || picked.length > Loom.DISCARD_MAX;
   }
@@ -683,7 +778,12 @@
     const word = builtWord();
     if (!Morph.WORDS[word]) return;
     const r = Loom.castWord(b, word);
-    if (!r.ok) { toast('The loom refuses.'); return; }
+    if (!r.ok) {
+      toast(r.reason === 'true-spelling'
+        ? '★ This word must be spelled true — the uncut rune cannot shape it.'
+        : 'The loom refuses.');
+      return;
+    }
     picked = [];
     afterAction();
   }
@@ -707,6 +807,7 @@
 
   function afterAction() {
     const b = battle;
+    blankAssign = {};
     LoomSave.save(meta);
     const evts = Loom.drainFx ? Loom.drainFx(b) : [];
     renderBattle();
@@ -888,6 +989,10 @@
       ${Morph.CENTERS.map(c => `<span class="mono">${c.seq}</span> ${c.name}`).join(' · ')}.</p>
       <p class="small" style="margin-top:6px"><b>The Scribe's Elision:</b> twin vowels never touch — the second transmutes (A→E, E→A, I→E, O→U, U→O).
       <b>The Easing Vowel:</b> when a binder's consonant strikes another consonant, the element's small vowel eases the joint.</p>
+      <p class="small" style="margin-top:6px"><b>The breath:</b> every word spoken in a turn tires the voice — each after
+      the first carries 15% less (the breath returns when the turn ends). <b>Uncut runes:</b> solving a mystery leaves a
+      blank tile ★ on your loom — shaped into any letter when spoken, spent forever, and never for the elder words.
+      <b>The shuttle:</b> once per turn, set one tile aside — it rides with you across turns and battles until spoken.</p>
       <p class="small dim" style="margin-top:6px">Your grimoire records <b>notes</b> — these rules and parts — not words.
       A word casts at full strength once every part it uses is in your notes; otherwise it can be improvised at half power —
       and the speaking itself teaches: any true word you improvise, or offer as a mystery guess, inscribes its unknown parts.
@@ -1066,14 +1171,25 @@
     if (active && active.tagName === 'INPUT') return;
     const ch = ev.key.toUpperCase();
     if (/^[A-Z]$/.test(ch)) {
-      const t = battle.tray.find(x => x.ch === ch && !x.frozen && !picked.includes(x.id));
+      let t = battle.tray.find(x => x.ch === ch && !x.frozen && !picked.includes(x.id))
+        || (run && run.shuttle || []).find(x => x.ch === ch && !picked.includes(x.id));
+      if (!t) {
+        // no such letter — an uncut rune can be shaped into it
+        const bl = battle.tray.find(x => x.blank && !x.frozen && !picked.includes(x.id))
+          || (run && run.shuttle || []).find(x => x.blank && !picked.includes(x.id));
+        if (bl) { blankAssign[bl.id] = ch; t = bl; }
+      }
       if (t) {
         picked.push(t.id);
         const tileEl = document.querySelector(`.tile[data-id="${t.id}"]`);
         if (tileEl) { tileEl.classList.remove('pop'); void tileEl.offsetWidth; tileEl.classList.add('pop'); }
         refreshBuild();
       }
-    } else if (ev.key === 'Backspace') { picked.pop(); refreshBuild(); }
+    } else if (ev.key === 'Backspace') {
+      const popped = picked.pop();
+      if (popped != null) delete blankAssign[popped];
+      refreshBuild();
+    }
     else if (ev.key === 'Enter') castBuilt();
   });
 

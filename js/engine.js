@@ -10,6 +10,12 @@
  * DEPLOY: spell readable words from the loom. The loom SUGGESTS only
  * words up to your class's chip range (+ Ribbon Index) — longer words
  * must be spelled by hand, from knowledge.
+ *
+ * Third weaving: THE BREATH (each word spoken in a turn tires the
+ * voice −15%, floor ×0.4 — the breath returns at turn's end), UNCUT
+ * RUNES (solving mints a blank tile, cap 2, shaped when spoken, spent
+ * forever — never for hidden words), and THE SHUTTLE (set one tile
+ * aside per turn; it rides across turns and battles until spoken).
  * ============================================================ */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) {
@@ -33,6 +39,16 @@
 
   const SOLVE_MULT = 1.5;
   const IMPROV_MULT = 0.5;
+  // the breath: every word spoken in a turn tires the voice a little —
+  // multi-casting is a choice with a cost, not a free sweep
+  const FATIGUE_STEP = 0.15;
+  const FATIGUE_FLOOR = 0.4;
+  // uncut runes: blank tiles minted by SOLVING, shaped into any letter
+  // when spoken, spent forever. Never drawn from the bag.
+  const BLANK_CAP = 2;
+  // the shuttle: set a tile aside once per turn; it rides with you
+  // across turns AND battles until spoken
+  const SHUTTLE_BASE = 2;
   const VOWELS = 'AEIOU';
   // the deep form notes never drop from ordinary study — elites, bosses and
   // the elder roads hold them
@@ -57,6 +73,7 @@
   }
   let tileSeq = 1;
   function drawTile(rng, bag) { return { id: tileSeq++, ch: drawLetter(rng, bag), frozen: 0 }; }
+  function makeBlank() { return { id: tileSeq++, ch: '★', blank: true, frozen: 0 }; }
   function refillTray(b) {
     const want = b.traySize - b.tray.length;
     for (let i = 0; i < want; i++) b.tray.push(drawTile(b.rng, b.bag));
@@ -64,7 +81,7 @@
     let vowels = b.tray.filter(t => VOWELS.includes(t.ch)).length;
     let guard = 0;
     while (vowels < floor && guard++ < 20) {
-      const idx = b.tray.findIndex(t => !VOWELS.includes(t.ch) && !t.frozen);
+      const idx = b.tray.findIndex(t => !VOWELS.includes(t.ch) && !t.frozen && !t.blank);
       if (idx < 0) break;
       b.tray[idx] = drawTile(b.rng, b.bag);
       if (VOWELS.includes(b.tray[idx].ch)) vowels++;
@@ -96,6 +113,9 @@
       mulligans: 1 + (run.perks.mulligans || 0),
       guessesPerTurn: 1,
       tileDiscardUsed: false,
+      shuttleUsed: false,
+      spokenThisTurn: 0,
+      blankMinted: false,
       quillUsed: false,
       sealedNotes: new Set(),
       turn: 0, over: false, won: false,
@@ -104,7 +124,15 @@
       log: [], stats: { casts: 0, improvs: 0, solves: 0, notes: [] },
       fxq: [],
     };
+    if (!run.shuttle) run.shuttle = [];
     refillTray(b);
+    // uncut runes ride between battles: they re-enter the fresh tray,
+    // each taking the place of a drawn letter
+    for (let i = 0; i < Math.min(run.blanks || 0, BLANK_CAP); i++) {
+      if (b.tray.length) b.tray.pop();
+      b.tray.push(makeBlank());
+    }
+    run.blanks = 0;
     const lens = guessableLengths(run);
     serveMystery(b, run.flags.longmystery ? lens[Math.min(lens.length - 1, 1)] : lens[0]);
     run.flags.longmystery = false;
@@ -173,6 +201,25 @@
     return marks;
   }
 
+  /* the breath: multiplier for the NEXT word spoken this turn */
+  function spokenMult(b) {
+    return Math.max(FATIGUE_FLOOR, Math.round((1 - FATIGUE_STEP * (b.spokenThisTurn || 0)) * 100) / 100);
+  }
+
+  /* solving leaves an UNCUT RUNE on the loom — a blank tile, shaped
+   * into any letter at speaking time and spent forever. The loom yields
+   * one per battle: only the FIRST solve leaves its splinter. */
+  function mintBlank(b) {
+    if (b.blankMinted) return false;
+    b.blankMinted = true;
+    const held = b.tray.filter(t => t.blank).length + b.run.shuttle.filter(t => t.blank).length;
+    if (held >= BLANK_CAP) return false;
+    b.tray.push(makeBlank());
+    say(b, '★ The solving leaves an <b>uncut rune</b> on your loom — a blank tile, shaped when spoken.');
+    fxEmit(b, { type: 'blank' });
+    return true;
+  }
+
   function canGuess(b) { return !b.over && !!b.mystery && b.guessesThisTurn < b.guessesPerTurn; }
   function useQuill(b) {
     if (b.quillUsed || !b.run.perks.quill || canGuess(b)) return false;
@@ -222,7 +269,11 @@
       fxEmit(b, { type: 'solved', word, notes: fresh.length });
       if (fresh.length) say(b, `✒️ New notes: <b>${fresh.map(pid => Morph.PARTS[pid].title).join(' · ')}</b> — yours forever.`);
       else say(b, '✒️ Its grammar was already yours — the solving was pure craft.');
-      castWordFx(b, word, SOLVE_MULT, 'solved');
+      const fat = spokenMult(b);
+      if (fat < 1) say(b, `🌬 Your breath is short — the solving carries ×${fat} of its force.`);
+      castWordFx(b, word, SOLVE_MULT * fat, 'solved');
+      b.spokenThisTurn++;
+      mintBlank(b);
       if (!b.over) serveMystery(b, m.len);
       return { ok: true, correct: true, marks, notes: fresh };
     }
@@ -253,17 +304,33 @@
   }
 
   /* ---------------- spelling from the loom ---------------- */
-  function tilesFor(b, word) {
-    const pool = b.tray.filter(t => !t.frozen).slice();
+  // tiles usable for spelling: the unfrozen tray plus everything riding
+  // on the shuttle (tray first, so banked tiles are only spent when needed)
+  function spellPool(b) {
+    return b.tray.filter(t => !t.frozen).concat(b.run.shuttle || []);
+  }
+  // exact letters first; UNCUT RUNES (blanks) fill whatever is missing —
+  // unless noBlanks: the hidden words must be spelled true
+  function tilesFor(b, word, opts) {
+    const pool = spellPool(b);
     const used = [];
+    let missing = 0;
     for (const ch of word) {
-      const idx = pool.findIndex(t => t.ch === ch);
-      if (idx < 0) return null;
+      const idx = pool.findIndex(t => t.ch === ch && !t.blank);
+      if (idx < 0) { missing++; continue; }
       used.push(pool.splice(idx, 1)[0]);
+    }
+    if (missing) {
+      if (opts && opts.noBlanks) return null;
+      for (let i = 0; i < missing; i++) {
+        const idx = pool.findIndex(t => t.blank);
+        if (idx < 0) return null;
+        used.push(pool.splice(idx, 1)[0]);
+      }
     }
     return used;
   }
-  const canSpell = (b, word) => !!tilesFor(b, word);
+  const canSpell = (b, word, opts) => !!tilesFor(b, word, opts);
 
   function chipMax(run) {
     return Math.min(MAX_LEN, run.cls.chipMax + (run.perks.ribbon || 0));
@@ -309,14 +376,40 @@
     return null;
   }
 
+  /* ---------------- the shuttle: tiles set aside, across turns ---------------- */
+  function shuttleCap(run) { return SHUTTLE_BASE + (run.perks.shuttle || 0); }
+  // once per turn: lift one tray tile onto the shuttle. It rides there —
+  // safe from foes, across turns and battles — until spoken or taken back.
+  function shuttleTile(b, id) {
+    if (b.over || b.shuttleUsed) return { ok: false, reason: b.over ? 'over' : 'used' };
+    if (b.run.shuttle.length >= shuttleCap(b.run)) return { ok: false, reason: 'full' };
+    const t = b.tray.find(x => x.id === id && !x.frozen);
+    if (!t) return { ok: false, reason: 'none' };
+    b.tray.splice(b.tray.indexOf(t), 1);
+    b.run.shuttle.push(t);
+    b.shuttleUsed = true;
+    say(b, `🧺 You set <b>${t.blank ? '★' : t.ch}</b> aside on the shuttle — it rides with you until spoken.`);
+    return { ok: true };
+  }
+  // taking a tile back is free (the deposit is what costs the turn's motion)
+  function unshuttleTile(b, id) {
+    if (b.over) return false;
+    const t = b.run.shuttle.find(x => x.id === id);
+    if (!t) return false;
+    b.run.shuttle.splice(b.run.shuttle.indexOf(t), 1);
+    b.tray.push(t);
+    return true;
+  }
+
   /* once per turn: cast up to DISCARD_MAX picked tiles back and draw as
-   * many fresh — the pressure valve for a loom with no words in it */
+   * many fresh — the pressure valve for a loom with no words in it.
+   * Uncut runes are precious: the bag refuses them. */
   const DISCARD_MAX = 5;
   function discardTiles(b, ids) {
     if (b.over || b.tileDiscardUsed) return { ok: false, reason: b.over ? 'over' : 'used' };
     const tiles = (ids || []).slice(0, DISCARD_MAX)
       .map(id => b.tray.find(t => t.id === id))
-      .filter(t => t && !t.frozen);
+      .filter(t => t && !t.frozen && !t.blank);
     if (!tiles.length) return { ok: false, reason: 'none' };
     for (const t of tiles) b.tray.splice(b.tray.indexOf(t), 1);
     for (let i = 0; i < tiles.length; i++) b.tray.push(drawTile(b.rng, b.bag));
@@ -331,15 +424,26 @@
     word = String(word || '').toUpperCase();
     const entry = Morph.WORDS[word];
     if (!entry) return { ok: false, reason: 'not-a-word' };
-    const tiles = tilesFor(b, word);
-    if (!tiles) return { ok: false, reason: 'tiles' };
+    // the hidden words must be spelled true — no uncut rune may shape them
+    const tiles = tilesFor(b, word, { noBlanks: !!entry.hidden });
+    if (!tiles) return { ok: false, reason: entry.hidden && canSpell(b, word) ? 'true-spelling' : 'tiles' };
     const know = knowSet(b.run.meta, b.sealedNotes);
     const readable = Morph.canRead(know, entry);
-    for (const t of tiles) b.tray.splice(b.tray.indexOf(t), 1);
-    if (readable) { b.stats.casts++; castWordFx(b, word, 1, 'cast'); }
+    const blanksSpent = tiles.filter(t => t.blank).length;
+    for (const t of tiles) {
+      const ti = b.tray.indexOf(t);
+      if (ti >= 0) b.tray.splice(ti, 1);
+      else {
+        const si = b.run.shuttle.indexOf(t);
+        if (si >= 0) b.run.shuttle.splice(si, 1);
+      }
+    }
+    if (blanksSpent) say(b, `★ ${blanksSpent > 1 ? blanksSpent + ' uncut runes shape themselves' : 'An uncut rune shapes itself'} into the word — and is spent.`);
+    const fat = spokenMult(b);
+    if (readable) { b.stats.casts++; castWordFx(b, word, fat, 'cast'); }
     else {
       b.stats.improvs++;
-      const improv = IMPROV_MULT + (b.run.perks.whetstone ? 0.2 : 0);
+      const improv = Math.round((IMPROV_MULT + (b.run.perks.whetstone ? 0.2 : 0)) * fat * 100) / 100;
       say(b, `〰 You improvise <b>${word}</b> — its grammar escapes you (×${improv}).`);
       // spelling a word you cannot yet read still teaches its grammar:
       // the unknown parts inscribe themselves (the cast stays improvised)
@@ -350,6 +454,7 @@
       }
       castWordFx(b, word, improv, 'improvised');
     }
+    b.spokenThisTurn++;
     return { ok: true, inscribed: readable };
   }
 
@@ -490,7 +595,7 @@
   function mulligan(b) {
     if (b.over || b.mulligans <= 0) return false;
     b.mulligans--;
-    b.tray = b.tray.filter(t => t.frozen);
+    b.tray = b.tray.filter(t => t.frozen || t.blank);
     refillTray(b);
     say(b, '♻ You sweep the loom and draw fresh letters.');
     return true;
@@ -582,7 +687,8 @@
         break;
       }
       case 'scramble':
-        b.tray = b.tray.filter(t => t.frozen);
+        // uncut runes are set in the loom's frame — the scramble spares them
+        b.tray = b.tray.filter(t => t.frozen || t.blank);
         refillTray(b);
         say(b, `🌀 ${f.name} scrambles your whole loom!`);
         break;
@@ -679,6 +785,8 @@
     b.player.block = 0;
     b.guessesThisTurn = 0;
     b.tileDiscardUsed = false;
+    b.shuttleUsed = false;
+    b.spokenThisTurn = 0; // the breath returns
     for (const t of b.tray) if (t.frozen) t.frozen--;
     const debt = b._trayDebt || 0;
     b._trayDebt = 0;
@@ -693,6 +801,8 @@
     if (!alive(b).length) {
       b.over = true; b.won = true;
       b.run.hp = b.player.hp; b.run.maxHp = b.player.maxHp;
+      // unspent uncut runes ride to the next battle's tray
+      b.run.blanks = b.tray.filter(t => t.blank).length;
       b.sealedNotes.clear();
       say(b, '🏆 The page is yours.');
       fxEmit(b, { type: 'victory' });
@@ -716,6 +826,8 @@
       hp: cls.hp, maxHp: cls.hp,
       traySize: cls.tray,
       bag,
+      shuttle: [], // tiles set aside — they ride across turns and battles
+      blanks: 0,   // uncut runes awaiting the next battle's tray
       perks: {},
       flags: {},
       worldIdx: 0, stageIdx: 0,
@@ -809,6 +921,7 @@
     if ((run.perks.ribbon || 0) < 4 && chipMax(run) < MAX_LEN)
       offers.push({ kind: 'ribbon', title: 'Ribbon Index', desc: `Your loom-sense reaches one rune further (now feels words to ${chipMax(run) + 1} runes).` });
     if (!run.perks.quill) offers.push({ kind: 'quill', title: 'Quill of Second Thoughts', desc: 'Once per battle: a second guess in one turn.' });
+    if ((run.perks.shuttle || 0) < 2) offers.push({ kind: 'shuttle', title: 'Ivory Shuttle', desc: `Your shuttle holds one more set-aside tile (now ${shuttleCap(run) + 1}).` });
     if (!run.perks.whetstone) offers.push({ kind: 'whetstone', title: 'Whetstone', desc: 'Improvised words carry ×0.7 instead of ×0.5.' });
     offers.push({ kind: 'vial', title: 'Ink Vial', desc: '+6 utmost ink, and mend that much.' });
 
@@ -840,6 +953,7 @@
       }
       case 'ribbon': run.perks.ribbon = (run.perks.ribbon || 0) + 1; return 'Your sense of the loom unspools further.';
       case 'quill': run.perks.quill = true; return 'The quill hums with hindsight.';
+      case 'shuttle': run.perks.shuttle = (run.perks.shuttle || 0) + 1; return 'The shuttle grows a notch — one more tile may ride.';
       case 'whetstone': run.perks.whetstone = true; return 'Your improvisations sharpen.';
       case 'vial': run.maxHp += 6; run.hp = Math.min(run.maxHp, run.hp + 6); return 'Your inkwell deepens.';
       case 'formnote': run.meta.parts.add(offer.pid); return `${Morph.PARTS[offer.pid].title} — inscribed. New lengths open to you.`;
@@ -1054,6 +1168,8 @@
     guess, canGuess, useQuill, judge, serveMystery, chooseLength, guessableLengths, revealLetter,
     castWord, canSpell, tilesFor, spellableWords, mulligan, endTurn,
     anySpellable, discardTiles, DISCARD_MAX, loomSense,
+    spokenMult, FATIGUE_STEP, FATIGUE_FLOOR,
+    shuttleTile, unshuttleTile, shuttleCap, makeBlank, BLANK_CAP,
     targetFoe, alive, describeIntent, foeIntent,
     rollRewards, applyReward, campChoices, applyCamp,
     rollEvent, applyEventChoice, applyElder,

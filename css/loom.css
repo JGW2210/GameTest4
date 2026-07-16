@@ -414,6 +414,52 @@ body.gl-on #screen { box-shadow: 0 26px 70px rgba(0,0,0,0.75), inset 0 0 60px rg
 }
 @keyframes stale-in { from { opacity: 0; transform: translateY(4px); } }
 
+/* ---- third weaving: uncut runes, the shuttle, the breath ---- */
+.tile.blank {
+  background: linear-gradient(180deg, #efe0ff, #cdb3ef);
+  border-color: #8a6fd8; color: var(--arc);
+  text-shadow: 0 0 8px rgba(123,79,216,0.45);
+}
+.tile.blank::after { content: '★'; position: absolute; font-size: 11px; top: -6px; right: -5px; color: var(--arc); }
+
+.shuttle-rack {
+  display: flex; gap: 7px; justify-content: center; align-items: center;
+  padding: 6px 4px 2px; flex-wrap: wrap;
+}
+.shuttle-label { font-size: 12px; opacity: 0.7; margin-right: 4px; }
+.shuttle-rack .tile { width: 40px; height: 45px; font-size: 20px; }
+.shuttle-rack .tile.shuttled {
+  border-color: #a97e1e; box-shadow: 0 0 10px rgba(201,162,39,0.35), 0 3px 6px rgba(0,0,0,0.2);
+  background: linear-gradient(180deg, #fdf2cf, #ecd089);
+}
+.shuttle-rack .tile.shuttled.blank { background: linear-gradient(180deg, #efe0ff, #cdb3ef); }
+.shuttle-rack .slot-empty {
+  opacity: 0.35; border-style: dashed; cursor: default; background: rgba(58,44,26,0.05);
+  box-shadow: none; font-size: 16px;
+}
+.shuttle-rack .slot-empty:hover { transform: none; }
+
+.breath-note {
+  margin: 4px auto 0; max-width: 420px; text-align: center;
+  font-size: 12.5px; color: #6b5326; font-style: italic;
+}
+
+#blank-picker {
+  position: fixed; inset: 0; z-index: 45; background: rgba(20,15,8,0.55);
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+}
+.blank-picker-inner {
+  background: linear-gradient(160deg, var(--paper) 0%, var(--paper2) 100%);
+  border: 1px solid #8a6fd8; border-radius: 12px; padding: 14px;
+  box-shadow: 0 16px 50px rgba(0,0,0,0.6), 0 0 24px rgba(123,79,216,0.3);
+  max-width: 420px;
+}
+.blank-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 10px; }
+.blank-letter {
+  padding: 8px 0; font-size: 17px; font-weight: bold; font-family: 'Courier New', monospace;
+  background: linear-gradient(180deg, #efe0ff, #cdb3ef); border-color: #8a6fd8; color: var(--arc);
+}
+
 /* ---- the loom-sense note ---- */
 .sense-note {
   margin: 6px auto 2px; padding: 5px 14px; max-width: 480px;

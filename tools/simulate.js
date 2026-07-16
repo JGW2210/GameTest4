@@ -56,6 +56,8 @@ function playBattle(b, rng, skill) {
   const want = pickLength(b);
   if (b.mystery.len !== want) Loom.chooseLength(b, want);
   while (!b.over && guard++ < 40) {
+    // guess FIRST: with the breath, a full-force solve wants a fresh voice
+    if (Loom.canGuess(b)) Loom.guess(b, trySolve(b, rng, skill));
     let cast = true, casts = 0;
     while (cast && !b.over && casts < 4) {
       cast = false;
@@ -75,11 +77,10 @@ function playBattle(b, rng, skill) {
           if (e.fx.aoe && Loom.alive(b).length > 1) v *= 1.5;
           return { e, v };
         }).sort((a, z) => z.v - a.v);
-        if (scored[0].v > 2) { Loom.castWord(b, scored[0].e.word); cast = true; casts++; }
+        // the breath: a tired word must still be worth the speaking
+        if (scored[0].v * Loom.spokenMult(b) > 2) { Loom.castWord(b, scored[0].e.word); cast = true; casts++; }
       }
     }
-    if (b.over) break;
-    if (Loom.canGuess(b)) Loom.guess(b, trySolve(b, rng, skill));
     if (!b.over) Loom.endTurn(b);
   }
   if (!b.over) { b.over = true; b.won = false; }
