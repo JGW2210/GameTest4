@@ -58,14 +58,19 @@ than your tier can still be **overreached** at improvised power.
 A run begins by **attuning three of your discovered elements** — the
 pouch holds **only their letters** (fire + vitality + earth is exactly
 `A E G I N R S T U`), their root vessels ride out wound, and only
-attuned words speak. The shaped centers' letters live in no kit: at low
-tiers the woven words are reached through **center vessels and uncut
-runes** (a blank can now feed a vessel's hollow slots), and the late
-spellings join the pouch only at Artisan+. The rest of the roster (and
+attuned words speak. The shaped centers' letters live in no kit:
+**thread a center** as a spoil of battle and its letters join the pouch
+(until then the woven words are reached through center vessels and
+uncut runes — a blank can feed a vessel's hollow slots). The **wedding
+spellings** — how an element is written when wedded second (`CIN`,
+`UND`, `PET`…) — are in no kit and no note until **won from battles at
+Artisan+**: each opens that element's marriages for the run, pours its
+letters in, and arrives wound on a vessel. The rest of the roster (and
 elements you have never met) arrive as spoils: **elites and wardens
-always hold an element**, and a new element enters the grimoire
-**whole, forever — letters and all**. Held secrets **seep** their
-letters in faintly, so the elder words stay spellable.
+always hold something rare** — a new element, or a wedding spelling —
+and a new element enters the grimoire **whole, forever — letters and
+all**. Held secrets **seep** their letters in faintly, so the elder
+words stay spellable.
 
 **Three worlds × four branching stages** (~20 minutes): the Margins 📜, the
 Inkfen ☠️, the Scriptorium Ruins 🏛 — each with its own foes, elite, and
@@ -125,20 +130,21 @@ thieves, rime wraiths, wisps that blur your wordle marks, lexicons that sap
 revealed runes, adaptive golems that calcify against your favorite element —
 and the Lexoleech, which **seals one of your grimoire notes** until it dies.
 
-Rewards: attune or discover an element, mend, widen the loom, infuse the
-bag, wound and spare vessels, Ribbon Index, Quill of Second Thoughts (an
-extra guess, once per battle), Whetstone (sharper overreach), Ink Vial,
-Ivory Shuttle.
+Rewards: attune or discover an element, thread a center, win a wedding
+spelling (Artisan+), mend, widen the loom, infuse the bag, wound and
+spare vessels, Ribbon Index, Quill of Second Thoughts (an extra guess,
+once per battle), Whetstone (sharper overreach), Ink Vial, Ivory
+Shuttle.
 
 Death loses nothing that matters: **every element discovered makes the
 next run's choice wider**, and the loom-school's tiers are held forever.
 
 Progress travels: the title page's **🧵 Weaver's Thread** spins your whole
-grimoire — notes, secrets, solved words, tallies — into one copyable code
-(a progress seed). Paste it into any other device's loom and it **merges**
-in: checksummed against typos, and knowledge is only ever gained, never
-lost. (The thread still speaks the old dialect — element rosters and
-tiers ride it in the next weaving.)
+grimoire — the element roster, the school tier, secrets, solved words,
+tallies — into one copyable code (a progress seed). Paste it into any
+other device's loom and it **merges** in: checksummed against typos, and
+knowledge is only ever gained, never lost. Elder threads (the old
+dialect) still weave in their secrets and solved words.
 
 ## Balance snapshot
 
@@ -149,10 +155,10 @@ harder than the power it unlocks pays back.)
 
 | tier · roster | win rate | note |
 |---|---:|---|
-| D1 Apprentice · 5 elements | ~44–49% | a first run reaches stage 10 of 12 on average |
-| D2 Journeyman · 7–10 elements | ~24–29% | |
-| D3 Artisan · full roster | ~27% | the Cantor reaches ~50%; elder pages begin |
-| D4 Loomwright · full + secrets | ~27–29% | the school's ceiling |
+| D1 Apprentice · 5 elements | ~43–46% | a first run reaches stage 10 of 12 on average |
+| D2 Journeyman · 7–10 elements | ~27–28% | |
+| D3 Artisan · full roster | ~30% | the Cantor reaches ~45%; elder pages begin |
+| D4 Loomwright · full + secrets | ~18–24% | the school's ceiling |
 
 ## Layout
 

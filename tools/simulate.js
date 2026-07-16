@@ -122,8 +122,10 @@ function simulateRun(nElements, difficulty, skill, clsId, seed, secrets) {
       const b = Loom.battleForNode(run, node);
       if (!playBattle(b, rng, skill)) return { won: false, stage: Loom.globalStageIdx(run), els: run.elements.size, secrets: meta.secrets.size };
       const offers = Loom.rollRewards(run, node);
-      const rank = (o) => o.kind === 'element' ? (o.rare ? 7 : 5.5)
+      const rank = (o) => o.kind === 'altspelling' ? 7.5
+        : o.kind === 'element' ? (o.rare ? 7 : 5.5)
         : (o.kind === 'mend' && run.hp < run.maxHp * 0.6) ? 6
+        : o.kind === 'center' ? 5
         : o.kind === 'bobbin' ? 4.5
         : o.kind === 'ribbon' ? 4 : o.kind === 'loom' ? 3.5 : o.kind === 'vial' ? 3 : 2;
       offers.sort((a, z) => rank(z) - rank(a));

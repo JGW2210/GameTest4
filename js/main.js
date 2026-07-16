@@ -356,12 +356,11 @@
       });
       $screen.appendChild(eRow);
       // the pouch preview: exactly the letters this trio brings
-      const withAlt = Loom.DIFF_BY_ID[diff].cap >= 11;
-      const letters = Loom.pouchLetters(chosen, withAlt);
+      const letters = Loom.pouchLetters(chosen);
       $screen.appendChild(el('div', 'pouch-preview',
         `👝 your rune pouch: <span class="mono">${letters.join(' ')}</span> — ${letters.length} letters` +
-        (withAlt ? ' <span class="dim">(the late spellings ride along at this tier)</span>'
-          : ' <span class="dim">(the shaped centers are reached through vessels and uncut runes)</span>')));
+        ' <span class="dim">(centers are threaded in as spoils on the road' +
+        (Loom.DIFF_BY_ID[diff].cap >= 11 ? '; the wedding spellings are won from elites' : '') + ')</span>'));
       const start = el('button', 'arcane', '⚔ Begin the run');
       start.style.cssText = 'display:block;margin:16px auto 0;font-size:17px;padding:10px 28px';
       start.disabled = chosen.length !== Loom.RUN_ELEMENTS;
@@ -893,7 +892,7 @@
   function renderPartPicker(v) {
     const old = document.getElementById('part-picker');
     if (old) old.remove();
-    const parts = Loom.windableParts(meta);
+    const parts = Loom.windableParts(meta, run);
     const ov = el('div', null, '');
     ov.id = 'part-picker';
     const inner = el('div', 'blank-picker-inner');
@@ -1252,8 +1251,10 @@
       from the first stitch; the rest are met on the road, as spoils and strange encounters. Each run <b>attunes three</b>
       of your discovered elements, and only attuned words speak. <b>The pouch speaks their letters:</b> your rune pouch
       holds only the attuned elements' letters (a trio is ~9 runes of alphabet), and every element gained on the road pours
-      its letters in. The shaped centers' letters are in no kit — reach the woven words through center vessels and uncut
-      runes — and the late spellings join the pouch only at Artisan and above. The school has <b>four tiers</b> — Apprentice (words to 8
+      its letters in. The shaped centers' letters are in no kit: <b>thread a center</b> as a spoil of battle and its
+      letters join the pouch (until then, the woven words are reached through center vessels and uncut runes). The
+      <b>wedding spellings</b> — how an element is written when wedded second — are won from battles at Artisan and above:
+      each opens that element's marriages, pours its letters in, and arrives wound on a vessel. The school has <b>four tiers</b> — Apprentice (words to 8
       runes), Journeyman (10), Artisan (12, and the elder roads), Loomwright (13, and the deepest secrets) — each unlocked
       by beating the one below. A readable word longer than your tier can still be <b>overreached</b>, at improvised power.</p>
       <p class="small" style="margin-top:6px"><b>Vessels (bobbins):</b> your three attuned elements' root vessels set out
@@ -1352,11 +1353,13 @@
       LoomSave.save(meta);
       hud();
       const bits = [];
-      if (gain.notes) bits.push(`<b>${gain.notes}</b> note${gain.notes > 1 ? 's' : ''}`);
+      if (gain.elements) bits.push(`<b>${gain.elements}</b> element${gain.elements > 1 ? 's' : ''}`);
       if (gain.secrets) bits.push(`<b>${gain.secrets}</b> secret${gain.secrets > 1 ? 's' : ''}`);
+      if (gain.diff) bits.push(`the <b>${Loom.DIFF_BY_ID[gain.diff].name}</b> tier`);
       toast((bits.length
         ? `🧵 The thread weaves in: ${bits.join(' and ')} join your grimoire.`
         : '🧵 The thread held nothing you did not already know.')
+        + (t.version === 1 ? '<br><span class="small">An elder thread — its secrets and solved words carry; its notes belong to a loom that no longer exists.</span>' : '')
         + (t.warn ? '<br><span class="small">It was spun on an older loom — some stitches may sit differently.</span>' : ''), 3600);
       renderThread();
     };

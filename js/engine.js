@@ -103,12 +103,15 @@
    * Each element carries a KIT — the letters of its root, binder and
    * suffixes, frequency-weighted and normalized to one mass. The run's
    * pouch is the attuned kits poured together: a trio speaks in ~9
-   * distinct letters. Center letters are NOT in any kit — the shaped
-   * words are reached through vessels and uncut runes at first. The
-   * late spellings (the keys to the blends) join only at Artisan and
-   * above, and held secrets SEEP their letters in faintly. */
+   * distinct letters. Center letters are NOT in any kit — they are
+   * THREADED in one center at a time, as spoils on the road. The
+   * wedding spellings (alt — how an element is written when wedded
+   * second) are in no kit either: at Artisan+ a battle may award one,
+   * opening that element's marriages, pouring its letters in, and
+   * winding it onto a vessel. Held secrets SEEP letters in faintly. */
   const KIT_MASS = 100;
-  const KIT_ALT_MASS = 12;
+  const KIT_ALT_MASS = 30;
+  const CENTER_LETTER_MASS = 12; // per distinct letter, when threaded
   const SECRET_SEEP = 3;
   const KITS = (() => {
     const out = {};
@@ -128,11 +131,10 @@
     }
     return out;
   })();
-  function addKit(bag, elId, withAlt) {
+  function addKit(bag, elId) {
     const kit = KITS[elId];
     if (!kit) return;
     for (const ch in kit.core) bag[ch] = (bag[ch] || 0) + kit.core[ch];
-    if (withAlt) for (const ch in kit.alt) bag[ch] = (bag[ch] || 0) + kit.alt[ch];
   }
   // the letters a piece of secret knowledge lets seep into the pouch
   function secretLetters(id) {
@@ -150,12 +152,12 @@
     for (const ch of new Set(secretLetters(id))) bag[ch] = (bag[ch] || 0) + SECRET_SEEP;
   }
   // the distinct letters a set of elements brings (for the prep screen)
-  function pouchLetters(elIds, withAlt) {
+  function pouchLetters(elIds) {
     const s = new Set();
     for (const id of elIds) {
       const el = Morph.EL_BY_ID[id];
       if (!el) continue;
-      for (const ch of el.root + (el.longRoot || '') + el.conn + el.small + el.medium + el.large + (withAlt ? el.alt : '')) s.add(ch);
+      for (const ch of el.root + (el.longRoot || '') + el.conn + el.small + el.medium + el.large) s.add(ch);
     }
     return Array.from(s).sort();
   }
@@ -184,10 +186,16 @@
     return meta;
   }
   // what THIS RUN reads: the attuned elements' parts, the universal
-  // grammar, and the secret knowledge — less whatever a foe has sealed
+  // grammar, and the secret knowledge — less whatever a foe has sealed.
+  // The wedding spelling (alt) stays unread until earned on the road.
   function runKnow(run, sealed) {
     const s = new Set(UNIVERSAL_PARTS);
-    for (const elId of run.elements) for (const pid of elementPartIds(elId)) s.add(pid);
+    for (const elId of run.elements) {
+      for (const pid of elementPartIds(elId)) {
+        if (pid === 'alt:' + elId && !(run.altUnlocked && run.altUnlocked.has(elId))) continue;
+        s.add(pid);
+      }
+    }
     for (const id of run.meta.secrets) s.add(id);
     if (sealed) for (const id of sealed) s.delete(id);
     return s;
@@ -497,15 +505,16 @@
   function startCapture(run, vesselId, seq, icon) {
     const v = (run.bobbins || []).find(x => x.id === vesselId);
     if (!v || v.wound) return false;
-    if (!windableParts(run.meta).some(p => p.seq === seq)) return false;
+    if (!windableParts(run.meta, run).some(p => p.seq === seq)) return false;
     v.capSeq = seq; v.capIcon = icon || '🪢'; v.winds = 0; v.left = seq;
     return true;
   }
 
   /* every part in the grimoire a vessel could hold (2+ letters). The
    * secret grammar appears here ONLY for its keeper — it is never
-   * offered, listed, or sold. */
-  function windableParts(meta) {
+   * offered, listed, or sold. Pass the run to gate the wedding
+   * spellings to the ones earned this run. */
+  function windableParts(meta, run) {
     const out = [];
     const seen = new Set();
     const add = (seq, icon, title, elder) => {
@@ -516,7 +525,8 @@
     for (const el of Morph.ELEMENTS) {
       if (meta.parts.has('root:' + el.id)) add(el.root, el.icon, `the ${el.name} root`);
       if (meta.secrets.has('sroot:' + el.id)) add(el.secret, el.icon, `the elder ${el.name}`, true);
-      if (meta.parts.has('alt:' + el.id)) add(el.alt, el.icon, `${el.name}'s late spelling`);
+      if (run ? run.altUnlocked.has(el.id) : meta.parts.has('alt:' + el.id))
+        add(el.alt, el.icon, `${el.name}'s wedding spelling`);
       if (meta.parts.has('suf:' + el.id + ':medium') && el.medium.length >= 2) add(el.medium, el.icon, `${el.name}'s medium suffix`);
       if (meta.parts.has('suf:' + el.id + ':large')) add(el.large, el.icon, `${el.name}'s large suffix`);
     }
@@ -1106,17 +1116,19 @@
         if (!chosen.includes(id)) chosen.push(id);
       }
     }
-    // the pouch: only the attuned elements' letters (late spellings
-    // join at Artisan+), plus a faint seep from any held secrets
+    // the pouch: only the attuned elements' letters, plus a faint seep
+    // from any held secrets. Centers are threaded in on the road; the
+    // wedding spellings are earned at Artisan+.
     const bag = {};
-    const withAlt = (DIFF_BY_ID[difficulty] || DIFFICULTIES[0]).cap >= 11;
-    for (const elId of chosen) addKit(bag, elId, withAlt);
+    for (const elId of chosen) addKit(bag, elId);
     for (const id of meta.secrets) addSecretSeep(bag, id);
     const run = {
       rng, meta, seed, cls,
       difficulty,
       elements: new Set(chosen), // attuned this run
       discovered: [],            // elements met for the FIRST time this run
+      altUnlocked: new Set(),    // elements whose wedding spelling is earned
+      threaded: new Set(),       // centers whose letters are in the pouch
       hp: cls.hp, maxHp: cls.hp,
       traySize: cls.tray,
       bag,
@@ -1222,8 +1234,8 @@
       if (!run.elements.has(el.id)) continue; // only the attuned elements' parts
       if (!held.has(el.root))
         out.push({ seq: el.root, icon: el.icon, label: `${el.root} — the ${el.name} root` });
-      if (!held.has(el.alt) && diffCap(run) >= 11)
-        out.push({ seq: el.alt, icon: el.icon, label: `${el.alt} — ${el.name}'s late spelling, the key to its blends` });
+      if (!held.has(el.alt) && run.altUnlocked.has(el.id))
+        out.push({ seq: el.alt, icon: el.icon, label: `${el.alt} — ${el.name}'s wedding spelling, the key to its marriages` });
     }
     for (const c of Morph.CENTERS) {
       if (!held.has(c.seq)) out.push({ seq: c.seq, icon: c.icon, label: `${c.seq} — ${c.name}` });
@@ -1256,10 +1268,37 @@
     return out;
   }
 
+  /* a center not yet threaded: its letters can join the pouch */
+  function centerOffers(run) {
+    return Morph.CENTERS.filter(c => !run.threaded.has(c.id)).map(c => ({
+      kind: 'center', center: c.id,
+      title: `Thread ${c.seq} — ${c.name}`,
+      desc: `${c.icon} ${c.shape} Its letters (${c.seq.split('').join(' ')}) join your pouch.`,
+    }));
+  }
+  /* the wedding spellings, at Artisan and above: one attuned element's
+   * second spelling — opening its marriages — with its letters and a
+   * wound vessel */
+  function altOffers(run) {
+    if (diffCap(run) < 11) return [];
+    return Array.from(run.elements)
+      .filter(id => !run.altUnlocked.has(id) && Morph.EL_BY_ID[id] && !Morph.EL_BY_ID[id].hiddenEl)
+      .map(id => {
+        const el = Morph.EL_BY_ID[id];
+        return { kind: 'altspelling', el: id, rare: true,
+          title: `The Wedding Spelling: ${el.alt}`,
+          desc: `${el.icon} How ${el.name} is written when wedded second — ${el.alt}. Opens its marriages: its letters join your pouch, and it arrives wound on a vessel.` };
+      });
+  }
+
   function rollRewards(run, node) {
     const offers = [];
     const els = elementOffers(run);
     if (els.length) offers.push(els[Math.floor(run.rng() * els.length)]);
+    const cens = centerOffers(run);
+    if (cens.length) offers.push(cens[Math.floor(run.rng() * cens.length)]);
+    const alts = altOffers(run);
+    if (alts.length) offers.push(alts[Math.floor(run.rng() * alts.length)]);
     offers.push({ kind: 'mend', title: 'Mend', desc: 'Recover 14 ink.' });
     if (run.traySize < 16) offers.push({ kind: 'loom', title: 'Widen the Loom', desc: '+1 tile in your tray, this run.' });
     const el = Morph.EL_BY_ID[pick(run.rng, Array.from(run.elements))] || pick(run.rng, Morph.ELEMENTS);
@@ -1282,14 +1321,15 @@
     offers.push({ kind: 'vial', title: 'Ink Vial', desc: '+6 utmost ink, and mend that much.' });
 
     const out = [];
-    // elites and wardens always hold an element — a new one if any remain
+    // elites and wardens always hold something rare: a NEW element if
+    // any remain, else a wedding spelling, else any element
     if (node.type === 'elite' || node.type === 'boss') {
       const fresh = els.filter(o => o.rare);
-      const offer = fresh.length ? fresh[Math.floor(run.rng() * fresh.length)]
-        : els.length ? els[Math.floor(run.rng() * els.length)] : null;
+      const pool = fresh.length ? fresh : (altOffers(run).length ? altOffers(run) : els);
+      const offer = pool.length ? pool[Math.floor(run.rng() * pool.length)] : null;
       if (offer) {
         out.push(offer);
-        const i = offers.indexOf(offer);
+        const i = offers.findIndex(o => o.kind === offer.kind && o.el === offer.el);
         if (i >= 0) offers.splice(i, 1);
       }
     }
@@ -1302,7 +1342,7 @@
       case 'element': {
         const el = Morph.EL_BY_ID[offer.el];
         run.elements.add(el.id);
-        addKit(run.bag, el.id, diffCap(run) >= 11); // its letters join the pouch
+        addKit(run.bag, el.id); // its letters join the pouch
         const fresh = !run.meta.elements.has(el.id);
         if (fresh) {
           run.meta.elements.add(el.id);
@@ -1312,6 +1352,19 @@
         return fresh
           ? `${el.icon} ${el.name} enters your grimoire — every part of it, yours forever — and its letters pour into your pouch.`
           : `${el.icon} ${el.name} attunes to your loom — its letters join the pouch for this run.`;
+      }
+      case 'center': {
+        const c = Morph.CENTER_BY_ID[offer.center];
+        run.threaded.add(c.id);
+        for (const ch of new Set(c.seq)) run.bag[ch] = (run.bag[ch] || 0) + CENTER_LETTER_MASS;
+        return `${c.icon} ${c.seq} threads into your pouch — ${c.name}'s letters ride among your runes now.`;
+      }
+      case 'altspelling': {
+        const el = Morph.EL_BY_ID[offer.el];
+        run.altUnlocked.add(el.id);
+        for (const ch in KITS[el.id].alt) run.bag[ch] = (run.bag[ch] || 0) + KITS[el.id].alt[ch];
+        const v = grantVessel(run, el.alt, el.icon);
+        return `${el.icon} ${el.alt} — ${el.name}'s wedding spelling, yours this run. Its letters join the pouch${v ? ' and it arrives wound on a vessel' : ''}; its marriages open.`;
       }
       case 'mend': run.hp = Math.min(run.maxHp, run.hp + 14); return 'You mend 14.';
       case 'loom': run.traySize++; return 'Your loom widens.';
@@ -1484,15 +1537,22 @@
   function push16(arr, n) { arr.push(n & 255, (n >> 8) & 255); }
   function read16(bytes, i) { return bytes[i] | (bytes[i + 1] << 8); }
 
+  const threadElements = () => Morph.ELEMENTS.map(e => e.id).sort();
+
   function threadEncode(meta) {
     const L = threadLists();
-    const raw = [1,
+    const E = threadElements();
+    // version 2: the roster and the school tier ride the thread; the
+    // notes bitmap is gone (parts derive from elements now)
+    const raw = [2,
       meta.runs & 255, (meta.runs >> 8) & 255,
       meta.wins & 255, (meta.wins >> 8) & 255,
-      Math.min(255, meta.bestNode || 0), Math.min(255, meta.elderDrought || 0)];
+      Math.min(255, meta.bestNode || 0), Math.min(255, meta.elderDrought || 0),
+      Math.min(255, meta.diff || 1)];
     push16(raw, grammarPrint(L));
+    push16(raw, E.length);
+    raw.push(...setToBits(E, (id) => meta.elements.has(id)));
     for (const [sorted, has] of [
-      [L.parts, (id) => meta.parts.has(id)],
       [L.secrets, (id) => meta.secrets.has(id)],
       [L.words, (w) => meta.solved.has(w)],
     ]) {
@@ -1516,43 +1576,59 @@
     const body = enc.slice(0, enc.length - 2);
     if (fnv16(body) !== sum) return { ok: false, error: 'frayed' };
     const raw = rleUnpack(body);
-    if (!raw || raw[0] !== 1 || raw.length < 15) return { ok: false, error: 'garbled' };
+    if (!raw || (raw[0] !== 1 && raw[0] !== 2) || raw.length < 15) return { ok: false, error: 'garbled' };
     const L = threadLists();
+    const version = raw[0];
     const out = {
-      ok: true,
+      ok: true, version,
       runs: read16(raw, 1), wins: read16(raw, 3),
       bestNode: raw[5], elderDrought: raw[6],
-      warn: read16(raw, 7) !== grammarPrint(L),
-      parts: [], secrets: [], solved: [],
+      diff: version >= 2 ? Math.min(4, Math.max(1, raw[7])) : 1,
+      elements: [], secrets: [], solved: [],
     };
-    let i = 9;
-    for (const [sorted, bucket] of [[L.parts, out.parts], [L.secrets, out.secrets], [L.words, out.solved]]) {
-      if (i + 2 > raw.length) return { ok: false, error: 'garbled' };
+    let i = version >= 2 ? 8 : 7;
+    out.warn = read16(raw, i) !== grammarPrint(L);
+    i += 2;
+    const readSet = (sorted, bucket) => {
+      if (i + 2 > raw.length) return false;
       const count = read16(raw, i);
       i += 2;
       const nBytes = Math.ceil(count / 8);
-      if (i + nBytes > raw.length) return { ok: false, error: 'garbled' };
+      if (i + nBytes > raw.length) return false;
       const n = Math.min(count, sorted.length); // tolerate grammar growth/shrink
       for (let k = 0; k < n; k++) {
         if (raw[i + (k >> 3)] & (1 << (k & 7))) bucket.push(sorted[k]);
       }
       i += nBytes;
+      return true;
+    };
+    if (version >= 2) {
+      if (!readSet(threadElements(), out.elements)) return { ok: false, error: 'garbled' };
+    } else {
+      // version 1 spun notes, not a roster — its parts are obsolete;
+      // skip them and keep its secrets, solved words, and tallies
+      if (!readSet(L.parts, [])) return { ok: false, error: 'garbled' };
     }
+    if (!readSet(L.secrets, out.secrets)) return { ok: false, error: 'garbled' };
+    if (!readSet(L.words, out.solved)) return { ok: false, error: 'garbled' };
     return out;
   }
 
   /* weave a decoded thread INTO a grimoire — union merge, never a loss */
   function threadMerge(meta, t) {
-    let fresh = 0;
-    for (const pid of t.parts) if (!meta.parts.has(pid)) { meta.parts.add(pid); fresh++; }
+    let freshEls = 0;
+    for (const id of (t.elements || [])) if (!meta.elements.has(id)) { meta.elements.add(id); freshEls++; }
     let freshSecrets = 0;
     for (const id of t.secrets) if (!meta.secrets.has(id)) { meta.secrets.add(id); freshSecrets++; }
     for (const w of t.solved) meta.solved.add(w);
+    const diffUp = (t.diff || 1) > (meta.diff || 1);
+    if (diffUp) meta.diff = t.diff;
     meta.runs = Math.max(meta.runs, t.runs);
     meta.wins = Math.max(meta.wins, t.wins);
     meta.bestNode = Math.max(meta.bestNode, t.bestNode);
     meta.elderDrought = Math.min(meta.elderDrought || 0, t.elderDrought);
-    return { notes: fresh, secrets: freshSecrets };
+    syncMeta(meta);
+    return { elements: freshEls, secrets: freshSecrets, diff: diffUp ? meta.diff : 0 };
   }
 
   return {
