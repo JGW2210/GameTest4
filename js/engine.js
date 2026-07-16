@@ -699,8 +699,10 @@
     // mastery, not archaeology: only readable words — attuned elements,
     // known grammar — may be spoken at all. Words beyond the tier's
     // length cap can still be OVERREACHED, at improvised power.
+    // A HIDDEN word admits nothing until its secret is held: it answers
+    // exactly like gibberish, so the secret lexicon cannot be probed.
     const know = runKnow(b.run, b.sealedNotes);
-    if (!Morph.canRead(know, entry)) return { ok: false, reason: 'unread' };
+    if (!Morph.canRead(know, entry)) return { ok: false, reason: entry.hidden ? 'not-a-word' : 'unread' };
     const within = entry.len <= diffCap(b.run);
     // the hidden words must be spelled true — no uncut rune may shape them
     let pieces;

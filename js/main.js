@@ -994,8 +994,11 @@
     const hint = document.querySelector('.build-hint');
     const castBtn = document.getElementById('cast-btn');
     if (!build) return;
-    const entry = Morph.WORDS[word];
+    let entry = Morph.WORDS[word];
     const know = Loom.runKnow(run, b.sealedNotes);
+    // a hidden word admits nothing until its secret is held — to every
+    // probe it reads as gibberish, not as a word you cannot speak
+    if (entry && entry.hidden && !Morph.canRead(know, entry)) entry = null;
     const readable = entry && Morph.canRead(know, entry);
     const within = entry && entry.len <= Loom.diffCap(run);
     const usesBlank = picked.some(id => { const t = tileById(id); return t && t.blank; });
