@@ -177,11 +177,17 @@
   }
   // the universal grammar — centers, joiners, forms, rules — known to all
   const UNIVERSAL_PARTS = Morph.PART_IDS.filter(pid => /^(center|join|form|rule):/.test(pid));
-  // materialize meta.parts from the discovered roster (union: merges keep)
+  // materialize meta.parts from the discovered roster (union: merges keep).
+  // The wedding spellings (alt) are NOT notes — they are won in-run at
+  // Artisan+ — so they never materialize, and any that older saves
+  // persisted are scrubbed.
   function syncMeta(meta) {
     if (!meta.elements) meta.elements = new Set(STARTER_ELEMENTS);
     if (!meta.diff) meta.diff = 1;
-    for (const elId of meta.elements) for (const pid of elementPartIds(elId)) meta.parts.add(pid);
+    for (const elId of meta.elements) for (const pid of elementPartIds(elId)) {
+      if (!pid.startsWith('alt:')) meta.parts.add(pid);
+    }
+    for (const el of Morph.ELEMENTS) meta.parts.delete('alt:' + el.id);
     for (const pid of UNIVERSAL_PARTS) meta.parts.add(pid);
     return meta;
   }

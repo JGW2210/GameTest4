@@ -733,10 +733,11 @@
       <table>
       ${Morph.ELEMENTS.filter(e => attuned(e)).map(e => {
         const elder = S.has('sroot:' + e.id);
+        const wed = run && run.altUnlocked.has(e.id);
         return `<tr><td>${e.icon}</td><td class="mono">${e.root}${elder ? `<span class="elder" title="the elder spelling — half again as hot">·${e.secret}</span>` : ''}</td>
           <td class="mono">${[suf(e, 'small', e.small), suf(e, 'medium', e.medium), suf(e, 'large', e.large)].join(' ')}</td>
           <td class="mono">${e.longRoot ? '→' + e.longRoot : '+' + e.conn}</td>
-          <td class="mono">⋯${e.alt}</td>
+          <td class="mono">${wed ? `<span title="the wedding spelling — won this run">⋯${e.alt}</span>` : '<span class="dim" title="its wedding spelling is not yet won">·</span>'}</td>
           <td>${e.name}</td></tr>`;
       }).join('')}
       ${Morph.SECRET_ELEMENTS.filter(e => S.has('selem:' + e.id)).map(e =>
@@ -765,10 +766,13 @@
     ov.id = 'guide-overlay';
     const inner = el('div', 'guide-inner');
     inner.appendChild(el('h2', null, '🪡 The Notes, at hand'));
-    inner.appendChild(el('div', 'small dim', 'Only what your grimoire already holds. The loom explains nothing.'));
+    inner.appendChild(el('div', 'small dim', 'Only what this run can speak. The loom explains nothing.'));
+    // during a run, the overlay shows RUN knowledge: attuned elements
+    // and the wedding spellings actually won — not the whole codex
+    const knowNow = run ? Loom.runKnow(run) : Loom.knowSet(meta);
     const GROUPS = [['roots', '🌳 Roots'], ['suffixes', '✂️ Suffixes'], ['binders', '🧵 Binders'], ['centers', '🌀 Centers'], ['joiners', '💍 Joiners'], ['forms', '𝔏 Forms'], ['rules', '✒️ Rules']];
     for (const [gid, gname] of GROUPS) {
-      const known = Morph.PART_IDS.filter(pid => Morph.PARTS[pid].group === gid && meta.parts.has(pid));
+      const known = Morph.PART_IDS.filter(pid => Morph.PARTS[pid].group === gid && knowNow.has(pid));
       const all = Morph.PART_IDS.filter(pid => Morph.PARTS[pid].group === gid);
       const sec = el('div', 'note-group', `<h3>${gname} <span class="small dim">${known.length}/${all.length}</span></h3>`);
       if (known.length) {
@@ -1192,7 +1196,9 @@
         const known = meta.parts.has(pid);
         list.appendChild(el('div', 'note' + (known ? '' : ' unknown'), known
           ? `<span class="note-icon">${part.icon}</span><b>${part.title}</b><div class="small dim">${part.note}</div>`
-          : `<span class="note-icon">·</span><b>— an unturned page —</b>`));
+          : pid.startsWith('alt:')
+            ? '<span class="note-icon">💍</span><b>— a wedding spelling —</b><div class="small dim">Won in battle, at Artisan and above. It opens the element\'s marriages for that run.</div>'
+            : `<span class="note-icon">·</span><b>— an unturned page —</b>`));
       }
       sec.appendChild(list);
       $screen.appendChild(sec);
