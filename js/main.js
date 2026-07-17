@@ -717,8 +717,101 @@
       }
     }
     pane.appendChild(gz);
+    pane.appendChild(anatomySection(b));
     pane.appendChild(loomGuide());
     return pane;
+  }
+
+  /* ---- the anatomy: what a word of THIS length can be ----
+   * Every form that weaves the mystery's length, as a formula, filled
+   * with chips from the run's own knowledge. Chips click into the
+   * guess. Derived from the READABLE lexicon only — it can neither
+   * leak a hidden word nor promise grammar a foe has sealed. */
+  const FORM_FORMULAS = {
+    cantrip: 'root + its small vowel',
+    word: 'root + its medium suffix',
+    bound: 'long root + its medium suffix',
+    weave: 'long root + a center',
+    mirror: 'long root + a center reversed + S',
+    verse: 'long root + a center\'s stem + its medium suffix + the stray vowel',
+    sovereign: 'long root + a center + its large suffix',
+    union: 'long root + ET + a wedding spelling + its medium suffix',
+    grandunion: 'long root + ET + a wedding spelling + its large suffix',
+    weaveunion: 'long root + ET + a wedding spelling + a center',
+  };
+  // forms where the center is spoken exactly as written (chip can type it)
+  const CENTER_VERBATIM = ['weave', 'sovereign', 'weaveunion'];
+  const WEDDING_FORMS = ['union', 'grandunion', 'weaveunion'];
+
+  function appendToGuess(txt) {
+    const input = document.getElementById('guess-input');
+    if (!input || !battle) return;
+    input.value = (input.value + txt).toUpperCase().replace(/[^A-Z]/g, '').slice(0, battle.mystery.len);
+    input.focus();
+  }
+
+  function anatomySection(b) {
+    const m = b.mystery;
+    const know = Loom.runKnow(run, b.sealedNotes);
+    const readable = Morph.VISIBLE.filter(e => e.len === m.len && Morph.canRead(know, e));
+    // the deduction meter counts live candidates (unsolved first, like
+    // the pool itself; if every word is solved, all of them count again)
+    let candidates = readable.filter(e => !meta.solved.has(e.word));
+    if (!candidates.length) candidates = readable;
+    const byForm = new Map();
+    for (const e of candidates) {
+      if (!byForm.has(e.form)) byForm.set(e.form, { count: 0, els: new Set(), centers: new Set(), el2s: new Set() });
+      const f = byForm.get(e.form);
+      f.count++;
+      f.els.add(e.el);
+      if (e.center) f.centers.add(e.center);
+      if (e.el2) f.el2s.add(e.el2);
+    }
+    const ordered = Morph.FORM_IDS.filter(fid => byForm.has(fid));
+    const wrap = el('div', 'anatomy');
+    wrap.appendChild(el('div', 'small anat-title', `— a <b>${m.len}</b>-rune word must be —`));
+    const canType = Loom.canGuess(b);
+    const chip = (txt, append, title) => {
+      const c = el(append && canType ? 'button' : 'span', 'anat-chip' + (append && canType ? '' : ' still'), txt);
+      if (title) c.title = title + (append && canType ? ' · click to add it to your guess' : '');
+      if (append && canType) c.onclick = () => appendToGuess(append);
+      return c;
+    };
+    for (const fid of ordered) {
+      const f = byForm.get(fid);
+      const row = el('div', 'anat-row');
+      row.appendChild(el('div', 'anat-head',
+        `<span class="anat-count" title="how many unsolved readable words fit this shape">${f.count} fit</span>` +
+        `<b>${Morph.FORMS[fid].name}</b> <span class="anat-formula">= ${FORM_FORMULAS[fid] || ''}</span>`));
+      const chips = el('div', 'anat-chips');
+      const longRootForm = !['cantrip', 'word'].includes(fid);
+      for (const elId of f.els) {
+        const e2 = Morph.EL_BY_ID[elId];
+        const piece = longRootForm ? Morph.longRoot(e2, e2.root) : e2.root;
+        chips.appendChild(chip(piece, piece, `${e2.icon} ${e2.name}${longRootForm ? ' — the long root' : ''}`));
+      }
+      if (WEDDING_FORMS.includes(fid)) {
+        chips.appendChild(el('span', 'anat-join', '⊕'));
+        chips.appendChild(chip('ET', 'ET', '💍 the Wedding — weds the second element in'));
+        for (const elId of f.el2s) {
+          const e2 = Morph.EL_BY_ID[elId];
+          chips.appendChild(chip(e2.alt, e2.alt, `${e2.icon} ${e2.name}, as written when wedded second`));
+        }
+      }
+      if (f.centers.size) {
+        chips.appendChild(el('span', 'anat-join', '⊕'));
+        const verbatim = CENTER_VERBATIM.includes(fid);
+        for (const cid of f.centers) {
+          const c = Morph.CENTER_BY_ID[cid];
+          chips.appendChild(chip(c.seq, verbatim ? c.seq : null,
+            `${c.icon} ${c.name} — ${c.shape}` + (verbatim ? '' : ' · reshaped by this form, so it cannot be typed whole')));
+        }
+      }
+      row.appendChild(chips);
+      wrap.appendChild(row);
+    }
+    if (!ordered.length) wrap.appendChild(el('div', 'small dim center', 'No form your notes can read weaves this length.'));
+    return wrap;
   }
 
   /* the loom guide — same esoteric notes, compact */
@@ -751,10 +844,7 @@
       <div style="margin-top:5px">centers: ${Morph.CENTERS.map(c => P.has('center:' + c.id)
         ? `<span class="mono" title="${c.shape}">${c.seq}</span>` : '<span class="dim">··</span>').join(' ')}${Morph.SECRET_CENTERS.filter(c => S.has('scenter:' + c.id)).map(c =>
         ` <span class="mono elder" title="${c.shape}">${c.seq}</span>`).join('')}</div>
-      <div>forms: ${Morph.FORM_IDS.map(f => P.has('form:' + f)
-        ? `<span class="mono" title="${Morph.FORMS[f].note}">${Morph.FORMS[f].name}</span>` : '<span class="dim">···</span>').join(' · ')}${S.has('sform:selfsame')
-        ? ` · <span class="mono elder" title="${Morph.SECRET_FORMS.selfsame.note}">${Morph.SECRET_FORMS.selfsame.name}</span>` : ''}</div>
-      <div>${P.has('join:et') ? '<span class="mono" title="weds two elements">ET</span> · ' : ''}${S.has('sjoin:ac') ? '<span class="mono elder" title="the elder wedding — closer and hotter">AC</span> · ' : ''}${P.has('rule:elision') ? '<span class="mono" title="twin vowels: the second transmutes">✒️elision</span> · ' : ''}${P.has('rule:easing') ? '<span class="mono" title="consonant joints eased by the small vowel">🫧easing</span>' : ''}</div>`;
+      <div>${S.has('sform:selfsame') ? `<span class="mono elder" title="${Morph.SECRET_FORMS.selfsame.note}">${Morph.SECRET_FORMS.selfsame.name}</span> · ` : ''}${S.has('sjoin:ac') ? '<span class="mono elder" title="the elder wedding — closer and hotter">AC</span> · ' : ''}${P.has('rule:elision') ? '<span class="mono" title="twin vowels: the second transmutes">✒️elision</span> · ' : ''}${P.has('rule:easing') ? '<span class="mono" title="consonant joints eased by the small vowel">🫧easing</span>' : ''}</div>`;
     return g;
   }
 
